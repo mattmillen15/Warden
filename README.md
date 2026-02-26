@@ -1,7 +1,6 @@
 # Warden
 
-Local portal for domain lifecycle work:
-
+Portal for domain lifecycle monitoring:
 - onboard and generate sites
 - track health / reputation / categorization
 - manage email warmup
@@ -9,16 +8,8 @@ Local portal for domain lifecycle work:
 
 ## Quick Start
 
-macOS / Linux:
-
 ```bash
 python3 warden.py setup --start
-```
-
-Windows:
-
-```powershell
-py warden.py setup --start
 ```
 
 Open:
