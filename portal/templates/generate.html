@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Warden — Generate Site{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Generate Site</h1>
+</div>
+
+<div class="detail-grid">
+    <div class="card">
+        <div class="card-header"><h2>Generate Site Files</h2></div>
+        <div class="card-body">
+            <p class="card-desc">
+                Generates a complete website into <code>output/&lt;domain&gt;/</code> on your local machine.
+                {% if auto_push %}
+                Auto-push is enabled and deployment will be attempted after generation.
+                {% else %}
+                Review generated files first, then deploy manually.
+                {% endif %}
+            </p>
+
+            <form method="POST" action="{{ url_for('generate') }}">
+                <div class="form-group">
+                    <label for="domain">Domain Name</label>
+                    <input type="text" id="domain" name="domain" placeholder="example.com" required pattern="[a-z0-9]([a-z0-9\-]*[a-z0-9])?(\.[a-z]{2,})+">
+                    <small>Lowercase, no protocol. Example: mycompany.com</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="category">Template Category</label>
+                    <select id="category" name="category" required onchange="updateDefault()">
+                        <option value="">Select a template...</option>
+                        {% for cat in categories %}
+                        <option value="{{ cat }}">{{ cat | replace('_', ' ') | title }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="company_name">Company Name</label>
+                    <input type="text" id="company_name" name="company_name" placeholder="Leave blank for template default">
+                    <small id="default-hint">Select a category to see the default name.</small>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-full">Generate Site Files</button>
+            </form>
+        </div>
+    </div>
+
+    {% include "_generation_guide.html" %}
+</div>
+
+{% include "_template_gallery.html" %}
+
+<script>
+var defaults = {{ defaults | tojson }};
+function updateDefault() {
+    var cat = document.getElementById('category').value;
+    var hint = document.getElementById('default-hint');
+    var input = document.getElementById('company_name');
+    if (cat && defaults[cat]) {
+        hint.textContent = 'Default: ' + defaults[cat];
+        input.placeholder = defaults[cat];
+    } else {
+        hint.textContent = 'Select a category to see the default name.';
+        input.placeholder = 'Leave blank for template default';
+    }
+}
+
+function selectTemplate(category) {
+    var select = document.getElementById('category');
+    if (!select) { return; }
+    select.value = category;
+    updateDefault();
+    select.scrollIntoView({behavior: 'smooth', block: 'center'});
+}
+</script>
+{% endblock %}

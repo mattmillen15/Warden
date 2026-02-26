@@ -1,0 +1,801 @@
+{% extends "base.html" %}
+{% block title %}Warden — Email Manager{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Email Manager</h1>
+</div>
+
+{% if not mail_provider_configured %}
+<div class="card card-warning">
+    <div class="card-body">
+        <h3>{{ email_provider_label }} Not Configured</h3>
+        <p>Email warmup is set to use {{ email_provider_label }}. Add the required credentials in <a href="{{ url_for('settings') }}">Settings</a>.</p>
+    </div>
+</div>
+{% endif %}
+
+<div class="detail-grid page-grid-responsive">
+    <!-- Email Deliverability Checker -->
+    <div class="card">
+        <div class="card-header"><h2>Email Landing Assistant</h2></div>
+        <div class="card-body">
+            <p class="card-desc">Check if a domain is properly configured for email sending. Verifies SPF, DKIM, and DMARC records.</p>
+            <div class="form-group">
+                <label>Select Domain</label>
+                <select id="email-check-domain">
+                    <option value="">Choose a domain...</option>
+                    {% for d in domains %}
+                    <option value="{{ d.name }}">{{ d.name }} ({{ d.category }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button class="btn btn-primary" onclick="runEmailCheck()">Check Email Configuration</button>
+            <div id="email-check-results" style="margin-top: 20px;"></div>
+        </div>
+    </div>
+
+    <!-- Email Warmup -->
+    <div class="card">
+        <div class="card-header"><h2>Email Warmup</h2></div>
+        <div class="card-body">
+            <p class="card-desc">Send warmup emails through {{ email_provider_label }} to build sender reputation. Start with 1-2/day and gradually increase over weeks.</p>
+
+            <div class="form-group">
+                <label>From Email</label>
+                <input type="email" id="warmup-from" placeholder="contact@yourdomain.com">
+            </div>
+            <div class="form-group">
+                <label>From Name</label>
+                <input type="text" id="warmup-from-name" placeholder="John Smith">
+            </div>
+            <div class="form-group">
+                <label>To Emails (one per line)</label>
+                <textarea id="warmup-to" rows="4" placeholder="target1@gmail.com&#10;target2@outlook.com&#10;target3@yahoo.com"></textarea>
+                <small>Use personal email accounts you control. Reply to warmup emails to build reputation.</small>
+            </div>
+            <div class="form-group">
+                <label>Emails to Send (max 5 per batch)</label>
+                <input type="number" id="warmup-count" value="1" min="1" max="5">
+            </div>
+            <button class="btn btn-primary {% if not mail_provider_configured %}btn-disabled{% endif %}" onclick="sendWarmup()" {% if not mail_provider_configured %}disabled{% endif %}>Send Warmup Emails</button>
+            <div id="warmup-results" style="margin-top: 20px;"></div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>Warmup Automation</h2>
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <button class="btn btn-sm {% if not mail_provider_configured %}btn-disabled{% endif %}" id="warmup-sched-refresh-btn" onclick="refreshWarmupSchedule()" {% if not mail_provider_configured %}disabled{% endif %}>Refresh</button>
+            <button class="btn btn-sm {% if not mail_provider_configured %}btn-disabled{% endif %}" id="warmup-sched-run-btn" onclick="runWarmupScheduleNow()" {% if not mail_provider_configured %}disabled{% endif %}>Run Now</button>
+            <button class="btn btn-sm btn-primary {% if not mail_provider_configured %}btn-disabled{% endif %}" id="warmup-sched-save-btn" onclick="saveWarmupSchedule()" {% if not mail_provider_configured %}disabled{% endif %}>Save Schedule</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <p class="card-desc">Automatically send benign warmup messages through {{ email_provider_label }} from selected tracked domains to your test contact list every N days.</p>
+        <div class="detail-grid page-grid-responsive">
+            <div>
+                <div class="form-group">
+                    <label style="display:flex; align-items:center; gap:8px;">
+                        <input type="checkbox" id="warmup-sched-enabled" {% if warmup_schedule.enabled %}checked{% endif %}>
+                        Enable automatic warmup
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label>Send Every (# of days)</label>
+                    <input type="number" id="warmup-sched-days" min="1" max="30" value="{{ warmup_schedule.interval_days or 1 }}">
+                </div>
+                <div class="form-group">
+                    <label>From Address Prefix</label>
+                    <input type="text" id="warmup-sched-local" placeholder="noreply" value="{{ warmup_schedule.sender_local_part or 'noreply' }}">
+                    <small>Warden sends as <code>&lt;prefix&gt;@&lt;domain&gt;</code> for each selected domain.</small>
+                </div>
+                <div class="form-group">
+                    <label>From Name</label>
+                    <input type="text" id="warmup-sched-from-name" placeholder="NoReply" value="{{ warmup_schedule.from_name or 'NoReply' }}">
+                </div>
+                <div class="form-group">
+                    <label>Emails Per Domain Per Run (max 5)</label>
+                    <input type="number" id="warmup-sched-count" min="1" max="5" value="{{ warmup_schedule.count or 1 }}">
+                </div>
+            </div>
+            <div>
+                <div class="form-group">
+                    <label>Test Contact List (one per line)</label>
+                    <textarea id="warmup-sched-to" rows="8" placeholder="you@gmail.com&#10;you@outlook.com&#10;you@yahoo.com">{% if warmup_schedule.to_emails %}{{ warmup_schedule.to_emails|join('\n') }}{% endif %}</textarea>
+                    <small>These should be inboxes you control for monitoring send/bounce behavior.</small>
+                </div>
+                <div class="form-group">
+                    <label>Domains Included In Automation</label>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+                        <button type="button" class="btn btn-sm" onclick="setWarmupScheduleDomains(true)">Select All</button>
+                        <button type="button" class="btn btn-sm" onclick="setWarmupScheduleDomains(false)">Clear All</button>
+                    </div>
+                    <div id="warmup-sched-domains" class="warmup-domain-list">
+                        {% set sched_selected = warmup_schedule.selected_domains or [] %}
+                        {% for d in domains %}
+                        {% set checked = (not sched_selected) or (d.name in sched_selected) %}
+                        <label class="warmup-domain-item">
+                            <input type="checkbox" class="warmup-sched-domain-checkbox" value="{{ d.name }}" {% if checked %}checked{% endif %}>
+                            <span>{{ d.name }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                    <small>Select only the domains you want the scheduler to warm. If none are selected, Warden treats that as all active tracked domains.</small>
+                </div>
+                <div class="form-group">
+                    <label>Status</label>
+                    <div id="warmup-sched-status" class="email-report" style="padding:12px;">
+                        <div class="info-row"><span class="info-label">Enabled</span><span class="info-value">{% if warmup_schedule.enabled %}<span class="status-up">Yes</span>{% else %}<span class="status-warn">No</span>{% endif %}</span></div>
+                        <div class="info-row"><span class="info-label">Active Domains</span><span class="info-value">{{ warmup_schedule.all_domain_count or warmup_schedule.domain_count or 0 }}</span></div>
+                        <div class="info-row"><span class="info-label">Selected Domains</span><span class="info-value">{{ warmup_schedule.selected_domain_count or 0 }}{% if not warmup_schedule.selected_domains %} <small class="text-muted">(all)</small>{% endif %}</span></div>
+                        <div class="info-row"><span class="info-label">Effective Domains</span><span class="info-value">{{ warmup_schedule.domain_count or 0 }}</span></div>
+                        <div class="info-row"><span class="info-label">Next Run</span><span class="info-value">{{ (warmup_schedule.next_run or '—')[:19] if warmup_schedule.next_run else '—' }}</span></div>
+                        <div class="info-row"><span class="info-label">Last Run</span><span class="info-value">{{ (warmup_schedule.last_run_at or '—')[:19] if warmup_schedule.last_run_at else '—' }}</span></div>
+                        <div class="info-row"><span class="info-label">Last Error</span><span class="info-value">{{ warmup_schedule.last_error or '—' }}</span></div>
+                    </div>
+                    <small id="warmup-sched-result-note" class="text-muted">
+                        {% if warmup_schedule.last_result %}
+                        Last result: {{ warmup_schedule.last_result.get('domains_sent', 0) }} domains sent, {{ warmup_schedule.last_result.get('domains_failed', 0) }} failed.
+                        {% else %}
+                        No scheduled runs yet.
+                        {% endif %}
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>Warmup Send Log</h2>
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <select id="warmup-log-domain-filter" class="inline-select" onchange="onWarmupLogFilterChange()">
+                <option value="">All Domains</option>
+                {% for d in domains %}
+                <option value="{{ d.name }}" {% if warmup_domain_filter == d.name %}selected{% endif %}>{{ d.name }}</option>
+                {% endfor %}
+            </select>
+            <button class="btn btn-sm" id="warmup-clear-log-btn" onclick="clearWarmupLog()">Clear Log</button>
+            <small id="warmup-sync-time" class="text-muted">
+                {% if mailjet_sync_enabled %}
+                    {% if warmup_last_synced %}Last Mailjet sync: {{ warmup_last_synced[:16] }}{% else %}Not synced yet{% endif %}
+                {% else %}
+                    Mailjet sync disabled ({{ email_provider_label }} selected)
+                {% endif %}
+            </small>
+            {% if mailjet_sync_enabled %}
+            <select id="warmup-sync-lookback" class="inline-select" title="Mailjet history window to import">
+                {% for opt in mailjet_sync_lookback_options %}
+                <option value="{{ opt.key }}" {% if (mailjet_sync_lookback_default or '1d') == opt.key %}selected{% endif %}>{{ opt.label }}</option>
+                {% endfor %}
+            </select>
+            <button class="btn btn-sm" id="warmup-sync-btn" onclick="syncWarmupLog()">Sync Mailjet Events</button>
+            {% else %}
+            <small class="text-muted">Mailjet event sync is available only when Mailjet is selected.</small>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body">
+        <small id="warmup-summary-scope" class="text-muted" style="display:block; margin-bottom: 8px;">
+            {{ warmup_summary_label or 'Warmup Log Summary (visible entries)' }}
+        </small>
+        <div id="warmup-log-summary" class="detail-grid" style="grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); margin-bottom: 14px;">
+            <div class="info-row"><span class="info-label">Total</span><span class="info-value">{{ warmup_summary.total or 0 }}</span></div>
+            <div class="info-row"><span class="info-label">Sent OK</span><span class="info-value status-up">{{ warmup_summary.sent_ok or 0 }}</span></div>
+            <div class="info-row"><span class="info-label">Send Failed</span><span class="info-value status-down">{{ warmup_summary.send_failed or 0 }}</span></div>
+            <div class="info-row"><span class="info-label">Negative Events</span><span class="info-value status-down">{{ warmup_summary.negative_events or 0 }}</span></div>
+        </div>
+        <small class="text-muted" style="display:block; margin-bottom: 10px;">
+            Log rows show sends with locally stored metadata. Mailjet sync updates delivery status and summary metrics for the selected time window when Mailjet is the active provider.
+        </small>
+        <div id="warmup-log-wrap">
+            {% if warmup_log %}
+            <table class="data-table" id="warmup-log-table">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>From</th>
+                        <th>To</th>
+                        <th>Subject</th>
+                        <th>Status</th>
+                        <th>Notes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in warmup_log %}
+                    <tr>
+                        <td><small class="text-muted">{{ (row.last_event_at or row.sent_at or '')[:19] }}</small></td>
+                        <td>{{ row.from_email or '—' }}</td>
+                        <td>{{ row.to or '—' }}</td>
+                        <td>{{ row.subject or '—' }}</td>
+                        <td>
+                            {% set s = (row.delivery_status or row.provider_status or row.mailjet_status or 'unknown') %}
+                            {% set s_display = 'success' if s == 'accepted' else s %}
+                            {% if s in ['bounce','bounced','blocked','spam','unsub','deferred','hard_bounce','soft_bounce','failed'] %}
+                            <span class="status-down">{{ s_display }}</span>
+                            {% elif s in ['accepted','sent','success','opened','clicked','delivered'] %}
+                            <span class="status-up">{{ s_display }}</span>
+                            {% else %}
+                            <span class="status-warn">{{ s_display }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if row.note_badges %}
+                            <div class="warmup-note-badges">
+                                {% for badge in row.note_badges %}
+                                <span class="warmup-note-badge warmup-note-{{ badge.tone or 'muted' }}">{{ badge.label }}</span>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                            {% if row.note_detail %}
+                            <div class="check-warning">{{ row.note_detail }}</div>
+                            {% elif not row.note_badges %}
+                            —
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="text-muted">No warmup sends logged yet.</p>
+            {% endif %}
+        </div>
+        <div id="warmup-log-pagination" style="margin-top: 12px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            {% if warmup_total_pages and warmup_total_pages > 1 %}
+            <small class="text-muted">Page {{ warmup_page or 1 }} of {{ warmup_total_pages }} ({{ warmup_total_entries or 0 }} events)</small>
+            {% else %}
+            <small class="text-muted">{{ warmup_total_entries or 0 }} events</small>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Email Setup Guide -->
+<div class="card">
+    <div class="card-header"><h2>Email Setup Guide</h2></div>
+    <div class="card-body">
+        <p class="card-desc">Complete checklist for setting up email on a domain for phishing engagements.</p>
+
+        <div class="guide-section">
+            <h3>1. SPF Record</h3>
+            <p>Add a TXT record to authorize Mailjet to send on your behalf.</p>
+            <div class="code-block">
+                <code>v=spf1 include:spf.mailjet.com ~all</code>
+            </div>
+        </div>
+
+        <div class="guide-section">
+            <h3>2. DKIM</h3>
+            <p>Mailjet provides a DKIM key pair. Add the public key as a TXT record:</p>
+            <div class="code-block">
+                <code>mailjet._domainkey.yourdomain.com TXT "v=DKIM1; k=rsa; p=YOUR_PUBLIC_KEY"</code>
+            </div>
+            <p><small>Get your DKIM key from the Mailjet dashboard under Authentication &rarr; SPF/DKIM.</small></p>
+        </div>
+
+        <div class="guide-section">
+            <h3>3. DMARC Record</h3>
+            <p>Start with a monitoring-only policy, then tighten after testing.</p>
+            <div class="code-block">
+                <code>_dmarc.yourdomain.com TXT "v=DMARC1; p=none; rua=mailto:dmarc@yourdomain.com"</code>
+            </div>
+            <p><small>After confirming legitimate emails pass, change to <code>p=quarantine</code> or <code>p=reject</code>.</small></p>
+        </div>
+
+        <div class="guide-section">
+            <h3>4. Warmup Schedule</h3>
+            <table class="data-table">
+                <thead>
+                    <tr><th>Week</th><th>Emails/Day</th><th>Notes</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>1</td><td>1-2</td><td>Send to accounts you control. Reply to every email.</td></tr>
+                    <tr><td>2</td><td>3-5</td><td>Mix Gmail, Outlook, Yahoo recipients.</td></tr>
+                    <tr><td>3</td><td>5-10</td><td>Ensure no bounces. Check spam folder placement.</td></tr>
+                    <tr><td>4+</td><td>10-20</td><td>Maintain consistent volume. Continue replying.</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="guide-section">
+            <h3>5. Pre-Engagement Checklist</h3>
+            <ul class="checklist">
+                <li>SPF record configured and passing</li>
+                <li>DKIM record configured and signing</li>
+                <li>DMARC record in place</li>
+                <li>Domain aged 30+ days minimum</li>
+                <li>Email warmed up for 2+ weeks</li>
+                <li>Test emails landing in inbox (not spam)</li>
+                <li>Domain categorized by web filters</li>
+                <li>SSL certificate active on website</li>
+                <li>Reverse DNS (PTR) configured if using dedicated IP</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<script>
+var warmupLogState = {
+    page: {{ warmup_page or 1 }},
+    perPage: {{ warmup_per_page or 20 }},
+    totalPages: {{ warmup_total_pages or 1 }},
+    totalEntries: {{ warmup_total_entries or 0 }},
+    domainFilter: {{ warmup_domain_filter|tojson }}
+};
+var mailjetSyncEnabled = {{ mailjet_sync_enabled|tojson }};
+
+function runEmailCheck() {
+    var domain = document.getElementById('email-check-domain').value;
+    if (!domain) { alert('Select a domain first.'); return; }
+
+    var resultsEl = document.getElementById('email-check-results');
+    resultsEl.innerHTML = '<span class="loading">Checking email configuration...</span>';
+
+    fetch('/api/email-check/' + domain)
+        .then(r => r.json())
+        .then(data => {
+            var html = '<div class="email-report">';
+
+            // Score
+            var score = 0;
+            if (data.spf.status === 'found') score += 25;
+            if (data.dkim.status === 'found') score += 25;
+            if (data.dmarc.status === 'found') score += 25;
+            if (data.mx.status === 'found') score += 25;
+
+            var scoreClass = score >= 75 ? 'score-good' : score >= 50 ? 'score-ok' : 'score-bad';
+            html += '<div class="email-score ' + scoreClass + '">';
+            html += '<div class="score-number">' + score + '/100</div>';
+            html += '<div class="score-label">Email Readiness</div>';
+            html += '</div>';
+
+            // SPF
+            html += '<div class="email-check-item">';
+            html += '<div class="check-header">';
+            html += (data.spf.status === 'found' ? '<span class="status-up">PASS</span>' : '<span class="status-down">FAIL</span>');
+            html += ' <strong>SPF Record</strong></div>';
+            if (data.spf.status === 'found') {
+                html += '<div class="record-value">' + data.spf.record + '</div>';
+                if (data.spf.issues) data.spf.issues.forEach(function(i) { html += '<div class="check-warning">' + i + '</div>'; });
+            } else {
+                html += '<div class="check-fix">Add TXT record: <code>v=spf1 include:spf.mailjet.com ~all</code></div>';
+            }
+            html += '</div>';
+
+            // DKIM
+            html += '<div class="email-check-item">';
+            html += '<div class="check-header">';
+            html += (data.dkim.status === 'found' ? '<span class="status-up">PASS</span>' : '<span class="status-warn">UNKNOWN</span>');
+            html += ' <strong>DKIM</strong></div>';
+            if (data.dkim.status === 'found') {
+                html += '<div class="record-value">Selector: ' + data.dkim.selector + '</div>';
+            } else {
+                html += '<div class="check-info">Configure DKIM in your Mailjet dashboard and add the TXT record.</div>';
+            }
+            html += '</div>';
+
+            // DMARC
+            html += '<div class="email-check-item">';
+            html += '<div class="check-header">';
+            html += (data.dmarc.status === 'found' ? '<span class="status-up">PASS</span>' : '<span class="status-down">FAIL</span>');
+            html += ' <strong>DMARC Record</strong></div>';
+            if (data.dmarc.status === 'found') {
+                html += '<div class="record-value">' + data.dmarc.record + '</div>';
+                if (data.dmarc.issues) data.dmarc.issues.forEach(function(i) { html += '<div class="check-warning">' + i + '</div>'; });
+            } else {
+                html += '<div class="check-fix">Add TXT record at <code>_dmarc.' + domain + '</code>: <code>v=DMARC1; p=none; rua=mailto:dmarc@' + domain + '</code></div>';
+            }
+            html += '</div>';
+
+            html += '</div>';
+            resultsEl.innerHTML = html;
+        })
+        .catch(() => { resultsEl.innerHTML = '<span class="status-down">Check failed.</span>'; });
+}
+
+function sendWarmup() {
+    var fromEmail = document.getElementById('warmup-from').value;
+    var fromName = document.getElementById('warmup-from-name').value;
+    var toText = document.getElementById('warmup-to').value;
+    var count = parseInt(document.getElementById('warmup-count').value);
+
+    if (!fromEmail || !toText.trim()) {
+        alert('Fill in From Email and To Emails.');
+        return;
+    }
+
+    var toEmails = toText.trim().split('\n').map(function(e) { return e.trim(); }).filter(Boolean);
+
+    var resultsEl = document.getElementById('warmup-results');
+    resultsEl.innerHTML = '<span class="loading">Sending warmup emails...</span>';
+
+    fetch('/api/warmup/send', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            from_email: fromEmail,
+            from_name: fromName,
+            to_emails: toEmails,
+            count: count,
+        }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        var html = '<div class="warmup-report">';
+        if (data.results) {
+            data.results.forEach(function(r) {
+                html += '<div class="warmup-result-item">';
+                var immediateStatus = String(r.delivery_status || r.provider_status || r.mailjet_status || (r.success ? 'accepted' : 'failed')).toLowerCase();
+                if (r.success) {
+                    html += '<span class="status-up">Success</span> ';
+                } else {
+                    html += '<span class="status-down">Failed</span> ';
+                }
+                html += 'To: ' + r.to + ' — Subject: "' + r.subject + '"';
+                if (r.success && immediateStatus) {
+                    html += ' <small class="text-muted">(' + immediateStatus + ')</small>';
+                }
+                if (r.error) html += '<div class="check-warning">' + r.error + '</div>';
+                html += '</div>';
+            });
+        }
+        if (data.error) {
+            html += '<div class="check-warning">' + data.error + '</div>';
+        }
+        html += '</div>';
+        resultsEl.innerHTML = html;
+        refreshWarmupLog(1);
+    })
+    .catch(() => { resultsEl.innerHTML = '<span class="status-down">Request failed.</span>'; });
+}
+
+function renderWarmupSummary(summary, label) {
+    var el = document.getElementById('warmup-log-summary');
+    if (!el || !summary) return;
+    var scope = document.getElementById('warmup-summary-scope');
+    if (scope && label) scope.textContent = String(label);
+    el.innerHTML = ''
+        + '<div class="info-row"><span class="info-label">Total</span><span class="info-value">' + (summary.total || 0) + '</span></div>'
+        + '<div class="info-row"><span class="info-label">Sent OK</span><span class="info-value status-up">' + (summary.sent_ok || 0) + '</span></div>'
+        + '<div class="info-row"><span class="info-label">Send Failed</span><span class="info-value status-down">' + (summary.send_failed || 0) + '</span></div>'
+        + '<div class="info-row"><span class="info-label">Negative Events</span><span class="info-value status-down">' + (summary.negative_events || 0) + '</span></div>';
+}
+
+function currentWarmupLogDomainFilter() {
+    var sel = document.getElementById('warmup-log-domain-filter');
+    return sel ? String(sel.value || '').trim().toLowerCase() : String(warmupLogState.domainFilter || '').trim().toLowerCase();
+}
+
+function renderWarmupLog(entries) {
+    var wrap = document.getElementById('warmup-log-wrap');
+    if (!wrap) return;
+    if (!entries || !entries.length) {
+        wrap.innerHTML = '<p class="text-muted">No warmup sends logged yet.</p>';
+        return;
+    }
+    var html = '<table class="data-table" id="warmup-log-table"><thead><tr>'
+        + '<th>Time</th><th>From</th><th>To</th><th>Subject</th><th>Status</th><th>Notes</th>'
+        + '</tr></thead><tbody>';
+    entries.forEach(function(row) {
+        var status = String(row.delivery_status || row.provider_status || row.mailjet_status || 'unknown').toLowerCase();
+        var statusLabel = (status === 'accepted') ? 'success' : status;
+        var cls = 'status-warn';
+        if (['bounce','bounced','blocked','spam','unsub','deferred','hard_bounce','soft_bounce','hardbounced','softbounced','failed'].indexOf(status) >= 0) cls = 'status-down';
+        else if (['accepted','sent','success','opened','clicked','delivered'].indexOf(status) >= 0) cls = 'status-up';
+        var ts = (row.last_event_at || row.sent_at || '').slice(0, 19);
+        var notesHtml = '—';
+        var badges = Array.isArray(row.note_badges) ? row.note_badges : [];
+        var detail = String(row.note_detail || '');
+        if (!detail && (!badges || !badges.length) && row.error) {
+            detail = String(row.error || '');
+        }
+        if ((badges && badges.length) || detail) {
+            notesHtml = '';
+            if (badges && badges.length) {
+                notesHtml += '<div class="warmup-note-badges">';
+                badges.forEach(function(badge) {
+                    if (!badge || !badge.label) return;
+                    var tone = String(badge.tone || 'muted');
+                    notesHtml += '<span class="warmup-note-badge warmup-note-' + tone + '">' + String(badge.label) + '</span>';
+                });
+                notesHtml += '</div>';
+            }
+            if (detail) notesHtml += '<div class="check-warning">' + detail + '</div>';
+        }
+        html += '<tr>'
+            + '<td><small class="text-muted">' + (ts || '—') + '</small></td>'
+            + '<td>' + (row.from_email || '—') + '</td>'
+            + '<td>' + (row.to || '—') + '</td>'
+            + '<td>' + (row.subject || '—') + '</td>'
+            + '<td><span class="' + cls + '">' + statusLabel + '</span></td>'
+            + '<td>' + notesHtml + '</td>'
+            + '</tr>';
+    });
+    html += '</tbody></table>';
+    wrap.innerHTML = html;
+}
+
+function renderWarmupPagination(meta) {
+    var wrap = document.getElementById('warmup-log-pagination');
+    if (!wrap) return;
+    var page = Number(meta && meta.page ? meta.page : 1);
+    var totalPages = Number(meta && meta.total_pages ? meta.total_pages : 1);
+    var totalEntries = Number(meta && meta.total_entries ? meta.total_entries : 0);
+    warmupLogState.page = page;
+    warmupLogState.totalPages = totalPages;
+    warmupLogState.totalEntries = totalEntries;
+
+    var html = '';
+    html += '<small class="text-muted">Page ' + page + ' of ' + totalPages + ' (' + totalEntries + ' events)</small>';
+    if (totalPages <= 1) {
+        wrap.innerHTML = html;
+        return;
+    }
+
+    html += '<button class="btn btn-sm" ' + (page <= 1 ? 'disabled' : '') + ' onclick="refreshWarmupLog(' + (page - 1) + ')">Prev</button>';
+
+    var start = Math.max(1, page - 2);
+    var end = Math.min(totalPages, page + 2);
+    if (start > 1) {
+        html += '<button class="btn btn-sm" onclick="refreshWarmupLog(1)">1</button>';
+        if (start > 2) html += '<small class="text-muted">…</small>';
+    }
+    for (var p = start; p <= end; p++) {
+        if (p === page) {
+            html += '<button class="btn btn-sm btn-primary" disabled>' + p + '</button>';
+        } else {
+            html += '<button class="btn btn-sm" onclick="refreshWarmupLog(' + p + ')">' + p + '</button>';
+        }
+    }
+    if (end < totalPages) {
+        if (end < totalPages - 1) html += '<small class="text-muted">…</small>';
+        html += '<button class="btn btn-sm" onclick="refreshWarmupLog(' + totalPages + ')">' + totalPages + '</button>';
+    }
+
+    html += '<button class="btn btn-sm" ' + (page >= totalPages ? 'disabled' : '') + ' onclick="refreshWarmupLog(' + (page + 1) + ')">Next</button>';
+    wrap.innerHTML = html;
+}
+
+function refreshWarmupLog(page) {
+    var targetPage = parseInt(page || warmupLogState.page || 1, 10);
+    if (!targetPage || targetPage < 1) targetPage = 1;
+    var perPage = parseInt(warmupLogState.perPage || 20, 10);
+    if (!perPage || perPage < 1) perPage = 20;
+
+    var domainFilter = currentWarmupLogDomainFilter();
+    warmupLogState.domainFilter = domainFilter;
+    var url = '/api/warmup/log?page=' + targetPage + '&per_page=' + perPage;
+    if (domainFilter) url += '&domain=' + encodeURIComponent(domainFilter);
+
+    fetch(url)
+        .then(r => r.json())
+        .then(data => {
+            renderWarmupSummary(data.summary || {}, data.summary_label || '');
+            renderWarmupLog(data.entries || []);
+            renderWarmupPagination(data || {});
+            warmupLogState.domainFilter = String((data && data.domain_filter) || domainFilter || '').toLowerCase();
+            var syncEl = document.getElementById('warmup-sync-time');
+            if (syncEl) {
+                if (mailjetSyncEnabled) {
+                    syncEl.textContent = data.last_synced_at
+                        ? 'Last Mailjet sync: ' + String(data.last_synced_at).slice(0, 16)
+                        : 'Not synced yet';
+                } else {
+                    syncEl.textContent = 'Mailjet sync disabled ({{ email_provider_label }})';
+                }
+            }
+        })
+        .catch(() => {});
+}
+
+function onWarmupLogFilterChange() {
+    refreshWarmupLog(1);
+}
+
+function clearWarmupLog() {
+    var domainFilter = currentWarmupLogDomainFilter();
+    var promptText = domainFilter
+        ? 'Clear warmup log entries for ' + domainFilter + '?'
+        : 'Clear the entire warmup send log?';
+    if (!confirm(promptText)) return;
+    var btn = document.getElementById('warmup-clear-log-btn');
+    if (btn) btn.disabled = true;
+    fetch('/api/warmup/log/clear', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({domain: domainFilter || ''})
+    })
+        .then(r => r.json().then(data => ({ok:r.ok, data:data})))
+        .then(res => {
+            if (!res.ok || !res.data.success) {
+                alert((res.data && res.data.error) || 'Failed to clear warmup log');
+                return;
+            }
+            refreshWarmupLog(1);
+        })
+        .catch(() => alert('Failed to clear warmup log'))
+        .finally(() => { if (btn) btn.disabled = false; });
+}
+
+function syncWarmupLog() {
+    var btn = document.getElementById('warmup-sync-btn');
+    if (!btn) return;
+    var lookbackSel = document.getElementById('warmup-sync-lookback');
+    var lookback = lookbackSel ? String(lookbackSel.value || '').trim() : '';
+    btn.disabled = true;
+    var original = btn.textContent;
+    btn.textContent = 'Syncing...';
+    fetch('/api/warmup/log/sync', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({lookback: lookback})
+    })
+        .then(r => r.json().then(data => ({ok:r.ok, data:data})))
+        .then(res => {
+            if (!res.ok || !res.data.success) {
+                alert((res.data && res.data.error) || 'Mailjet sync failed');
+                return;
+            }
+            refreshWarmupLog(warmupLogState.page || 1);
+        })
+        .catch(() => {
+            alert('Mailjet sync failed');
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.textContent = original;
+        });
+}
+
+function collectWarmupSchedulePayload() {
+    var toText = (document.getElementById('warmup-sched-to').value || '').trim();
+    var selectedDomains = Array.prototype.slice.call(document.querySelectorAll('.warmup-sched-domain-checkbox:checked'))
+        .map(function(el){ return String(el.value || '').trim().toLowerCase(); })
+        .filter(Boolean);
+    return {
+        enabled: !!document.getElementById('warmup-sched-enabled').checked,
+        interval_days: parseInt(document.getElementById('warmup-sched-days').value || '1', 10),
+        sender_local_part: (document.getElementById('warmup-sched-local').value || 'noreply').trim(),
+        from_name: (document.getElementById('warmup-sched-from-name').value || '').trim(),
+        count: parseInt(document.getElementById('warmup-sched-count').value || '1', 10),
+        to_emails: toText ? toText.split('\n').map(function(v){ return v.trim(); }).filter(Boolean) : [],
+        selected_domains: selectedDomains
+    };
+}
+
+function renderWarmupScheduleStatus(data) {
+    var wrap = document.getElementById('warmup-sched-status');
+    var note = document.getElementById('warmup-sched-result-note');
+    if (!wrap || !data) return;
+    var enabled = !!data.enabled;
+    var nextRun = data.next_run ? String(data.next_run).slice(0, 19) : '—';
+    var lastRun = data.last_run_at ? String(data.last_run_at).slice(0, 19) : '—';
+    var lastError = data.last_error || '—';
+    wrap.innerHTML = ''
+        + '<div class="info-row"><span class="info-label">Enabled</span><span class="info-value">' + (enabled ? '<span class="status-up">Yes</span>' : '<span class="status-warn">No</span>') + '</span></div>'
+        + '<div class="info-row"><span class="info-label">Active Domains</span><span class="info-value">' + (data.all_domain_count || data.domain_count || 0) + '</span></div>'
+        + '<div class="info-row"><span class="info-label">Selected Domains</span><span class="info-value">' + (data.selected_domain_count || 0) + ((data.selected_domains && data.selected_domains.length) ? '' : ' <small class=\"text-muted\">(all)</small>') + '</span></div>'
+        + '<div class="info-row"><span class="info-label">Effective Domains</span><span class="info-value">' + (data.domain_count || 0) + '</span></div>'
+        + '<div class="info-row"><span class="info-label">Next Run</span><span class="info-value">' + nextRun + '</span></div>'
+        + '<div class="info-row"><span class="info-label">Last Run</span><span class="info-value">' + lastRun + '</span></div>'
+        + '<div class="info-row"><span class="info-label">Last Error</span><span class="info-value">' + lastError + '</span></div>';
+    if (note) {
+        var lr = data.last_result || {};
+        if (Object.keys(lr).length) {
+            note.textContent = 'Last result: ' + (lr.domains_sent || 0) + ' domains sent, ' + (lr.domains_failed || 0) + ' failed, '
+                + (lr.messages_accepted || 0) + ' messages accepted, ' + (lr.messages_failed || 0) + ' failed.';
+        } else {
+            note.textContent = 'No scheduled runs yet.';
+        }
+    }
+}
+
+function applyWarmupScheduleToForm(data) {
+    if (!data) return;
+    var enabled = document.getElementById('warmup-sched-enabled');
+    var days = document.getElementById('warmup-sched-days');
+    var local = document.getElementById('warmup-sched-local');
+    var fromName = document.getElementById('warmup-sched-from-name');
+    var count = document.getElementById('warmup-sched-count');
+    var to = document.getElementById('warmup-sched-to');
+    var selected = Array.isArray(data.selected_domains) ? data.selected_domains.map(function(v){ return String(v || '').toLowerCase(); }) : [];
+    var checkboxes = document.querySelectorAll('.warmup-sched-domain-checkbox');
+    if (enabled) enabled.checked = !!data.enabled;
+    if (days && typeof data.interval_days !== 'undefined') days.value = data.interval_days;
+    if (local && typeof data.sender_local_part !== 'undefined') local.value = data.sender_local_part || 'noreply';
+    if (fromName && typeof data.from_name !== 'undefined') fromName.value = data.from_name || '';
+    if (count && typeof data.count !== 'undefined') count.value = data.count || 1;
+    if (to && Array.isArray(data.to_emails)) to.value = data.to_emails.join('\n');
+    if (checkboxes && checkboxes.length) {
+        var useAll = !selected.length;
+        Array.prototype.forEach.call(checkboxes, function(cb) {
+            var val = String(cb.value || '').toLowerCase();
+            cb.checked = useAll ? true : selected.indexOf(val) >= 0;
+        });
+    }
+}
+
+function setWarmupScheduleDomains(selectAll) {
+    var checkboxes = document.querySelectorAll('.warmup-sched-domain-checkbox');
+    Array.prototype.forEach.call(checkboxes, function(cb) {
+        cb.checked = !!selectAll;
+    });
+}
+
+function refreshWarmupSchedule() {
+    fetch('/api/warmup/schedule')
+        .then(r => r.json().then(data => ({ok:r.ok, data:data})))
+        .then(res => {
+            if (!res.ok || !res.data.success) {
+                alert((res.data && res.data.error) || 'Failed to load warmup schedule');
+                return;
+            }
+            applyWarmupScheduleToForm(res.data);
+            renderWarmupScheduleStatus(res.data);
+        })
+        .catch(() => alert('Failed to load warmup schedule'));
+}
+
+function saveWarmupSchedule() {
+    var btn = document.getElementById('warmup-sched-save-btn');
+    if (btn) { btn.disabled = true; btn.dataset.originalText = btn.textContent; btn.textContent = 'Saving...'; }
+    fetch('/api/warmup/schedule', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(collectWarmupSchedulePayload())
+    })
+        .then(r => r.json().then(data => ({ok:r.ok, data:data})))
+        .then(res => {
+            if (!res.ok || !res.data.success) {
+                alert((res.data && res.data.error) || 'Failed to save warmup schedule');
+                return;
+            }
+            applyWarmupScheduleToForm(res.data);
+            renderWarmupScheduleStatus(res.data);
+        })
+        .catch(() => alert('Failed to save warmup schedule'))
+        .finally(() => {
+            if (btn) { btn.disabled = false; btn.textContent = btn.dataset.originalText || 'Save Schedule'; }
+        });
+}
+
+function runWarmupScheduleNow() {
+    var btn = document.getElementById('warmup-sched-run-btn');
+    if (btn) { btn.disabled = true; btn.dataset.originalText = btn.textContent; btn.textContent = 'Running...'; }
+    fetch('/api/warmup/schedule/run', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: '{}'
+    })
+        .then(r => r.json().then(data => ({ok:r.ok, data:data})))
+        .then(res => {
+            if (!res.ok || !res.data.success) {
+                alert((res.data && (res.data.error || res.data.last_error)) || 'Scheduled warmup run failed');
+            }
+            if (res.data) {
+                applyWarmupScheduleToForm(res.data);
+                renderWarmupScheduleStatus(res.data);
+            }
+            refreshWarmupLog(1);
+        })
+        .catch(() => alert('Scheduled warmup run failed'))
+        .finally(() => {
+            if (btn) { btn.disabled = false; btn.textContent = btn.dataset.originalText || 'Run Now'; }
+        });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    renderWarmupPagination({
+        page: warmupLogState.page,
+        total_pages: warmupLogState.totalPages,
+        total_entries: warmupLogState.totalEntries
+    });
+    renderWarmupScheduleStatus({{ warmup_schedule|tojson }});
+});
+</script>
+{% endblock %}

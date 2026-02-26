@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contact Us &mdash; {{COMPANY_NAME}}</title>
+    <meta name="description" content="Contact {{COMPANY_NAME}} for reservations, group orders, corporate retreats, and travel agent partnerships. 24/7 concierge line available. Miami headquarters.">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://{{DOMAIN}}/contact">
+
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Contact Us — {{COMPANY_NAME}}">
+    <meta property="og:description" content="Reservations, group orders, corporate retreats, and travel agent partnerships. 24/7 concierge line available.">
+    <meta property="og:url" content="https://{{DOMAIN}}/contact">
+    <meta property="og:image" content="https://{{DOMAIN}}/images/og-contact.jpg">
+
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Contact Us — {{COMPANY_NAME}}">
+    <meta name="twitter:description" content="Reservations, group orders, corporate retreats, and travel agent partnerships.">
+
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+    <!-- Header -->
+    <header class="site-header">
+        <div class="header-top">
+            Luxury All-Inclusive Stores &mdash; Caribbean &bull; Mexico &bull; Maldives &bull; Bali
+        </div>
+        <div class="header-main">
+            <a href="index.html" class="logo">
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.94-.49-7-3.85-7-7.93 0-.62.08-1.22.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+                <div>{{COMPANY_NAME}}<span>Luxury Hospitality</span></div>
+            </a>
+            <nav class="main-nav" aria-label="Main navigation">
+                <ul>
+                    <li><a href="index.html">Home</a></li>
+                    <li><a href="services.html">Collections</a></li>
+                    <li><a href="about.html">About</a></li>
+                    <li><a href="blog.html">Blog</a></li>
+                    <li><a href="contact.html" class="active">Contact</a></li>
+                </ul>
+            </nav>
+            <button class="nav-toggle" aria-label="Toggle navigation">
+                <span></span><span></span><span></span>
+            </button>
+        </div>
+    </header>
+
+    <main>
+        <section class="page-hero">
+            <div class="container">
+                <h1>Contact Us</h1>
+                <p>Reservations, group orders, and personalized travel planning &mdash; our team is here to help.</p>
+            </div>
+        </section>
+
+        <section class="contact-content">
+            <div class="container contact-grid">
+                <div class="contact-form-wrap">
+                    <h2>Send Us an Inquiry</h2>
+                    <form id="contact-form" class="contact-form">
+                        <div class="form-group">
+                            <label for="name">Full Name</label>
+                            <input type="text" id="name" name="name" required placeholder="Your full name">
+                        </div>
+                        <div class="form-group">
+                            <label for="email">Email Address</label>
+                            <input type="email" id="email" name="email" required placeholder="you@example.com">
+                        </div>
+                        <div class="form-group">
+                            <label for="phone">Phone Number <span class="optional">(optional)</span></label>
+                            <input type="tel" id="phone" name="phone" placeholder="+1 (555) 000-0000">
+                        </div>
+                        <div class="form-group">
+                            <label for="subject">Inquiry Type</label>
+                            <select id="subject" name="subject">
+                                <option value="reservation">Reservation Inquiry</option>
+                                <option value="group">Group &amp; Event Booking</option>
+                                <option value="corporate">Corporate Retreat</option>
+                                <option value="honeymoon">Honeymoon Package</option>
+                                <option value="travel-agent">Travel Agent Partnership</option>
+                                <option value="general">General Question</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="collection">Preferred Collection <span class="optional">(optional)</span></label>
+                            <select id="collection" name="collection">
+                                <option value="">Not sure yet</option>
+                                <option value="stlucia">St. Lucia Oceanfront Villas</option>
+                                <option value="rivieramaya">Riviera Maya Beach Store</option>
+                                <option value="maldives">Maldives Overwater Bungalows</option>
+                                <option value="bali">Bali Jungle Retreat</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="message">Message</label>
+                            <textarea id="message" name="message" rows="6" required placeholder="Tell us about your ideal trip — dates, number of customers, special requests..."></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Send Inquiry</button>
+                    </form>
+                    <div id="form-success" class="form-success" style="display:none;">
+                        <h3>Thank you for your inquiry!</h3>
+                        <p>Our reservations team will respond within 24 hours. For immediate assistance, please call our 24/7 concierge line.</p>
+                    </div>
+                </div>
+
+                <div class="contact-info">
+                    <div class="info-card">
+                        <h3>Miami Headquarters</h3>
+                        <p>100 Biscayne Boulevard, Suite 2800<br>Miami, FL 33132</p>
+                        <p><em>By appointment only</em></p>
+                    </div>
+                    <div class="info-card">
+                        <h3>Reservations</h3>
+                        <p><a href="mailto:hello@{{DOMAIN}}">hello@{{DOMAIN}}</a></p>
+                        <p><a href="tel:+15555550100">(555) 555-0100</a></p>
+                        <p>24/7 Concierge Line</p>
+                    </div>
+                    <div class="info-card">
+                        <h3>Group &amp; Event Bookings</h3>
+                        <p>Collection weddings, corporate retreats, family reunions, and incentive travel for groups of 10 or more. Dedicated event planners and customized group rates available.</p>
+                        <p><a href="mailto:support@{{DOMAIN}}">support@{{DOMAIN}}</a></p>
+                    </div>
+                    <div class="info-card">
+                        <h3>Corporate Retreats</h3>
+                        <p>All four properties offer meeting spaces, team-building excursions, and executive accommodation packages. Wi-Fi and AV equipment included at all venues.</p>
+                        <p><a href="mailto:sales@{{DOMAIN}}">sales@{{DOMAIN}}</a></p>
+                    </div>
+                    <div class="info-card">
+                        <h3>Travel Agent Partners</h3>
+                        <p>We offer competitive commissions, familiarization trips, and co-branded marketing support for travel advisors. Join our preferred partner program.</p>
+                        <p><a href="mailto:partners@{{DOMAIN}}">partners@{{DOMAIN}}</a></p>
+                    </div>
+                    <div class="info-card">
+                        <h3>Booking &amp; Cancellation Policy</h3>
+                        <p>Flexible order with free cancellation up to 30 days before arrival. A 50% deposit is required at the time of order. Full payment is due 14 days prior to check-in. Travel insurance is strongly recommended.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+        <div class="container">
+            <div class="footer-grid">
+                <div class="footer-brand">
+                    <div class="logo">{{COMPANY_NAME}}</div>
+                    <p>Luxury all-inclusive stores in the Caribbean, Mexico, Maldives, and Bali. Creating extraordinary escapes and unforgettable moments since 2015.</p>
+                </div>
+                <div class="footer-col">
+                    <h4>Collections</h4>
+                    <ul>
+                        <li><a href="services.html#stlucia">St. Lucia</a></li>
+                        <li><a href="services.html#rivieramaya">Riviera Maya</a></li>
+                        <li><a href="services.html#maldives">Maldives</a></li>
+                        <li><a href="services.html#bali">Bali</a></li>
+                        <li><a href="services.html">All Collections</a></li>
+                    </ul>
+                </div>
+                <div class="footer-col">
+                    <h4>Company</h4>
+                    <ul>
+                        <li><a href="about.html">About Us</a></li>
+                        <li><a href="blog.html">Blog</a></li>
+                        <li><a href="contact.html">Contact</a></li>
+                        <li><a href="privacy.html">Privacy Policy</a></li>
+                    </ul>
+                </div>
+                <div class="footer-col">
+                    <h4>Guest Services</h4>
+                    <ul>
+                        <li><a href="contact.html">Reservations</a></li>
+                        <li><a href="contact.html">Group Bookings</a></li>
+                        <li><a href="contact.html">Travel Agent Partners</a></li>
+                        <li><a href="mailto:hello@{{DOMAIN}}">hello@{{DOMAIN}}</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; <span id="current-year">2026</span> {{COMPANY_NAME}}. All rights reserved.</p>
+                <div class="footer-bottom-links">
+                    <a href="privacy.html">Privacy Policy</a>
+                    <a href="privacy.html">Terms of Service</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script src="js/main.js"></script>
+</body>
+</html>

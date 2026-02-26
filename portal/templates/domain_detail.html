@@ -1,0 +1,549 @@
+{% extends "base.html" %}
+{% block title %}Warden — {{ domain.name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <a href="{{ url_for('dashboard') }}" class="breadcrumb">&larr; Dashboard</a>
+        <h1>{{ domain.name }}</h1>
+    </div>
+    <div class="header-actions">
+        {% if domain.has_output %}
+        <a href="{{ url_for('generated_result', domain_name=domain.name) }}" class="btn btn-primary btn-sm">View Generated Files</a>
+        {% endif %}
+        {% if domain.has_output and domain.status == 'generated' %}
+        <button class="btn btn-sm" id="push-btn" onclick="pushToGitHub('{{ domain.name }}')">Push to GitHub</button>
+        {% endif %}
+        <a href="{{ url_for('generate') }}" class="btn btn-sm">Regenerate</a>
+        <button class="btn btn-danger btn-sm" onclick="deleteDomain('{{ domain.name }}')">Delete</button>
+    </div>
+</div>
+
+<div class="detail-grid">
+    <!-- Domain Info Card -->
+    <div class="card">
+        <div class="card-header"><h2>Domain Info</h2></div>
+        <div class="card-body">
+            <div class="info-row">
+                <span class="info-label">Domain</span>
+                <span class="info-value">{{ domain.name }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Repository</span>
+                <span class="info-value">
+                    {% if github_username %}
+                    <a href="https://github.com/{{ github_username }}/{{ domain.repo }}" target="_blank">{{ github_username }}/{{ domain.repo }}</a>
+                    {% else %}
+                    {{ domain.repo }}
+                    {% endif %}
+                </span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Category</span>
+                <span class="info-value"><span class="badge badge-category">{{ domain.category }}</span></span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Purchase Date</span>
+                <span class="info-value">{{ domain.purchaseDate }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Status</span>
+                <span class="info-value">
+                    <span id="status-badge" class="badge badge-{{ domain.status }}" style="margin-right:8px;">{{ domain.status }}</span>
+                    <select id="status-select" class="inline-select" onchange="updateStatus('{{ domain.name }}', this.value)">
+                        {% for s in ['deployed', 'aging', 'active', 'burned', 'retired'] %}
+                        <option value="{{ s }}" {% if domain.status == s %}selected{% endif %}>{{ s }}</option>
+                        {% endfor %}
+                    </select>
+                </span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Notes</span>
+                <span class="info-value">
+                    <textarea id="notes-input" class="inline-textarea" rows="2" onblur="updateNotes('{{ domain.name }}', this.value)">{{ domain.notes or '' }}</textarea>
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Health Check Card -->
+    <div class="card">
+        <div class="card-header">
+            <h2>Health &amp; DNS</h2>
+            <button class="btn btn-sm" onclick="runAllChecks('{{ domain.name }}')">Run All Checks</button>
+        </div>
+        <div class="card-body">
+            <p class="card-desc">Last health scan: <span id="health-last-scan">{% if domain.last_health_scan %}{{ domain.last_health_scan[:16] }}{% else %}Never{% endif %}</span></p>
+            <div class="check-section">
+                <h3>HTTP Status</h3>
+                <div id="http-status" class="check-result">
+                    {% if domain.last_health == 'up' %}<span class="status-up">UP — HTTP {{ domain.last_health_code or '200' }}</span>
+                    {% elif domain.last_health == 'up_no_ssl' %}<span class="status-warn">UP (no SSL) — HTTP {{ domain.last_health_code or '' }}</span>
+                    {% elif domain.last_health == 'down' %}<span class="status-down">DOWN</span>
+                    {% else %}Click "Run All Checks" to test{% endif %}
+                </div>
+            </div>
+            <div class="check-section">
+                <h3>DNS Records</h3>
+                <div id="dns-records" class="check-result">{% if domain.has_dns %}<span class="status-up">DNS records detected in last scan.</span>{% else %}—{% endif %}</div>
+            </div>
+            <div class="check-section">
+                <h3>Email Deliverability</h3>
+                <div id="email-records" class="check-result">
+                    {% if domain.last_health_scan %}
+                    SPF: {% if domain.has_spf %}<span class="status-up">Yes</span>{% else %}<span class="status-down">No</span>{% endif %} |
+                    DKIM: {% if domain.has_dkim %}<span class="status-up">Yes</span>{% else %}<span class="status-warn">No</span>{% endif %} |
+                    DMARC: {% if domain.has_dmarc %}<span class="status-up">Yes</span>{% else %}<span class="status-down">No</span>{% endif %}
+                    {% else %}—{% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Automated Reputation Scan -->
+<div class="card">
+    <div class="card-header">
+        <h2>Reputation Scan</h2>
+        <button class="btn btn-sm" onclick="runReputationScan('{{ domain.name }}')">Scan Now</button>
+    </div>
+    <div class="card-body">
+        <p class="card-desc">Automated checks via VirusTotal, AbuseIPDB, and URLhaus APIs. Last scan: <span id="rep-last-scan">{% if domain.last_rep_scan %}{{ domain.last_rep_scan[:16] }}{% else %}Never{% endif %}</span></p>
+        <div id="rep-results" class="rep-results-grid">
+            <div class="rep-card" id="rep-vt">
+                <h3>VirusTotal</h3>
+                <div class="rep-status">—</div>
+                <div class="rep-detail"></div>
+            </div>
+            <div class="rep-card" id="rep-abuseipdb">
+                <h3>AbuseIPDB</h3>
+                <div class="rep-status">—</div>
+                <div class="rep-detail"></div>
+            </div>
+            <div class="rep-card" id="rep-urlhaus">
+                <h3>URLhaus</h3>
+                <div class="rep-status">—</div>
+                <div class="rep-detail"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Categorization Checks -->
+<div class="card">
+    <div class="card-header">
+        <h2>Categorization Checks</h2>
+        <button class="btn btn-sm" onclick="runCategorizationScan('{{ domain.name }}')">Scan Providers</button>
+    </div>
+    <div class="card-body">
+        <p class="card-desc">Automatic checks run against TrendMicro, McAfee, Symantec/Bluecoat, and Cisco Talos. Last scan: <span id="cat-last-scan">{% if domain.categorization_snapshot and domain.categorization_snapshot.scanned_at %}{{ domain.categorization_snapshot.scanned_at[:16] }}{% else %}Never{% endif %}</span></p>
+        <div id="cat-results" class="check-result">No categorization scan data yet.</div>
+    </div>
+</div>
+
+<!-- Categorization Services -->
+<div class="card">
+    <div class="card-header"><h2>Manual Categorization Services</h2></div>
+    <div class="card-body">
+        <p class="card-desc">Submit and check categorization at each service. Links open in new tabs.</p>
+        <div class="services-grid">
+            {% for svc in services %}
+            <div class="service-card">
+                <h3>{{ svc.name }}</h3>
+                <div class="service-links">
+                    {% if svc.check_url %}
+                    <a href="{{ svc.check_url }}" target="_blank" class="btn btn-xs">Check</a>
+                    {% endif %}
+                    {% if svc.submit_url %}
+                    <a href="{{ svc.submit_url }}" target="_blank" class="btn btn-xs">Submit</a>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- DNS Instructions -->
+<div class="card">
+    <div class="card-header"><h2>DNS Setup Instructions</h2></div>
+    <div class="card-body">
+        <h3>A Records (apex domain)</h3>
+        <div class="code-block">
+            <code>185.199.108.153</code><br>
+            <code>185.199.109.153</code><br>
+            <code>185.199.110.153</code><br>
+            <code>185.199.111.153</code>
+        </div>
+        <h3>CNAME Record (www subdomain)</h3>
+        <div class="code-block">
+            <code>www &rarr; {{ github_username or 'YOUR_USERNAME' }}.github.io</code>
+        </div>
+    </div>
+</div>
+
+<script>
+function updateStatus(domain, status) {
+    fetch('/api/domain/' + domain + '/status', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({status: status}),
+    })
+    .then(r => r.json().then(data => ({ok:r.ok, data:data})))
+    .then(res => {
+        if (!res.ok || !res.data.success) {
+            alert((res.data && res.data.error) || 'Failed to update status');
+            return;
+        }
+        var badge = document.getElementById('status-badge');
+        if (badge) {
+            badge.className = 'badge badge-' + status;
+            badge.textContent = status;
+        }
+    })
+    .catch(() => {
+        alert('Failed to update status');
+    });
+}
+
+function updateNotes(domain, notes) {
+    fetch('/api/domain/' + domain + '/notes', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({notes: notes}),
+    });
+}
+
+function deleteDomain(domain) {
+    if (!confirm('Remove ' + domain + ' from tracking?')) return;
+    fetch('/api/domain/' + domain, {method: 'DELETE'})
+        .then(() => window.location.href = '/');
+}
+
+function pushToGitHub(domain) {
+    var btn = document.getElementById('push-btn');
+    btn.textContent = 'Pushing...';
+    btn.disabled = true;
+    fetch('/api/github/push/' + domain, {method: 'POST'})
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                btn.textContent = 'Deployed';
+                btn.classList.add('btn-success');
+                // Update status dropdown
+                document.getElementById('status-select').value = 'deployed';
+                if (data.repo_url) {
+                    alert('Pushed to ' + data.repo_url);
+                }
+            } else {
+                btn.textContent = 'Failed';
+                btn.classList.add('btn-danger');
+                alert('Push failed: ' + data.error);
+                btn.disabled = false;
+            }
+        })
+        .catch(() => {
+            btn.textContent = 'Error';
+            btn.classList.add('btn-danger');
+            btn.disabled = false;
+        });
+}
+
+function runAllChecks(domain) {
+    var httpEl = document.getElementById('http-status');
+    var dnsEl = document.getElementById('dns-records');
+    var emailEl = document.getElementById('email-records');
+    httpEl.innerHTML = '<span class="loading">Checking...</span>';
+    dnsEl.innerHTML = '<span class="loading">Checking...</span>';
+    emailEl.innerHTML = '<span class="loading">Checking...</span>';
+
+    fetch('/api/scan/health/' + domain, {method: 'POST'})
+        .then(r => r.json())
+        .then(snapshot => {
+            if (snapshot.http_status === 'up') {
+                httpEl.innerHTML = '<span class="status-up">UP — HTTP ' + (snapshot.http_code || '') + '</span>';
+            } else if (snapshot.http_status === 'up_no_ssl') {
+                httpEl.innerHTML = '<span class="status-warn">UP (no SSL) — HTTP ' + (snapshot.http_code || '') + '</span>';
+            } else {
+                httpEl.innerHTML = '<span class="status-down">DOWN</span>';
+            }
+
+            var dns = snapshot.dns || {};
+            var dnsHtml = '';
+            for (var rtype in dns) {
+                if (dns[rtype] && dns[rtype].length > 0) {
+                    dnsHtml += '<div class="dns-row"><strong>' + rtype.toUpperCase() + ':</strong> ' + dns[rtype].join(', ') + '</div>';
+                }
+            }
+            dnsEl.innerHTML = dnsHtml || '<span class="text-muted">No records found</span>';
+
+            var data = snapshot.email || {};
+            var html = '';
+
+            // SPF
+            html += '<div class="email-check-row">';
+            html += '<strong>SPF:</strong> ';
+            if (data.spf.status === 'found') {
+                html += '<span class="status-up">Found</span>';
+                html += '<div class="record-value">' + data.spf.record + '</div>';
+                if (data.spf.issues && data.spf.issues.length) {
+                    data.spf.issues.forEach(function(issue) {
+                        html += '<div class="check-warning">' + issue + '</div>';
+                    });
+                }
+            } else {
+                html += '<span class="status-down">Missing</span>';
+                html += '<div class="check-warning">Add an SPF record to improve email deliverability</div>';
+            }
+            html += '</div>';
+
+            // DKIM
+            html += '<div class="email-check-row">';
+            html += '<strong>DKIM:</strong> ';
+            if (data.dkim.status === 'found') {
+                html += '<span class="status-up">Found</span> (selector: ' + data.dkim.selector + ')';
+            } else {
+                html += '<span class="status-warn">Not detected</span>';
+                html += '<div class="check-info">DKIM requires knowing the selector. Configure with your email provider.</div>';
+            }
+            html += '</div>';
+
+            // DMARC
+            html += '<div class="email-check-row">';
+            html += '<strong>DMARC:</strong> ';
+            if (data.dmarc.status === 'found') {
+                html += '<span class="status-up">Found</span>';
+                html += '<div class="record-value">' + data.dmarc.record + '</div>';
+                if (data.dmarc.issues && data.dmarc.issues.length) {
+                    data.dmarc.issues.forEach(function(issue) {
+                        html += '<div class="check-warning">' + issue + '</div>';
+                    });
+                }
+            } else {
+                html += '<span class="status-down">Missing</span>';
+                html += '<div class="check-warning">Add a DMARC record: v=DMARC1; p=none; rua=mailto:dmarc@' + domain + '</div>';
+            }
+            html += '</div>';
+
+            emailEl.innerHTML = html;
+            document.getElementById('health-last-scan').textContent = snapshot.scanned_at
+                ? new Date(snapshot.scanned_at).toLocaleString()
+                : 'Just now';
+        })
+        .catch(() => {
+            httpEl.innerHTML = '<span class="status-down">Error</span>';
+            dnsEl.innerHTML = '<span class="status-down">Error</span>';
+            emailEl.innerHTML = '<span class="status-down">Error</span>';
+        });
+}
+
+function runReputationScan(domain) {
+    var cards = document.querySelectorAll('.rep-card');
+    cards.forEach(function(card) {
+        card.querySelector('.rep-status').innerHTML = '<span class="loading">Scanning...</span>';
+        card.querySelector('.rep-detail').innerHTML = '';
+    });
+
+    fetch('/api/scan/reputation/' + domain, {method: 'POST'})
+        .then(r => r.json())
+        .then(snapshot => {
+            var results = snapshot.results || [];
+            results.forEach(function(r) {
+                if (r.service === 'VirusTotal') renderVtDetail(r);
+                else if (r.service === 'AbuseIPDB') renderAbuseDetail(r);
+                else if (r.service === 'URLhaus') renderUrlhausDetail(r);
+            });
+            if (snapshot.scanned_at) {
+                document.getElementById('rep-last-scan').textContent = new Date(snapshot.scanned_at).toLocaleString();
+            }
+        })
+        .catch(() => {
+            cards.forEach(function(card) {
+                card.querySelector('.rep-status').innerHTML = '<span class="status-down">Error</span>';
+            });
+        });
+}
+
+function renderCategorizationResult(snapshot) {
+    var target = document.getElementById('cat-results');
+    if (!target) return;
+    if (!snapshot || !snapshot.results || !snapshot.results.length) {
+        target.innerHTML = '<span class="text-muted">No categorization scan data yet.</span>';
+        return;
+    }
+    var summary = snapshot.summary || {};
+    var html = '';
+    html += '<div class="rep-section"><strong>Summary:</strong> ';
+    html += 'Checked ' + (summary.checked || 0) + ', ';
+    html += 'Challenge ' + (summary.challenge || 0) + ', ';
+    html += 'Auth ' + (summary.auth_required || 0) + ', ';
+    html += 'Errors ' + (summary.errors || 0) + '</div>';
+    html += '<table class="data-table"><thead><tr><th>Provider</th><th>Status</th><th>Category</th><th>Reputation</th><th>Notes</th></tr></thead><tbody>';
+    snapshot.results.forEach(function(item) {
+        var status = item.status || 'unknown';
+        var badge = '<span class="status-warn">' + status + '</span>';
+        if (status === 'checked') badge = '<span class="status-up">checked</span>';
+        if (status === 'error') badge = '<span class="status-down">error</span>';
+        if (status === 'challenge') badge = '<span class="status-warn">challenge</span>';
+        if (status === 'auth_required') badge = '<span class="status-warn">auth_required</span>';
+        html += '<tr>';
+        html += '<td>' + (item.service || item.vendor || 'provider') + '</td>';
+        html += '<td>' + badge + '</td>';
+        html += '<td>' + (item.category || '—') + '</td>';
+        html += '<td>' + (item.reputation || '—') + '</td>';
+        html += '<td>' + (item.message || '—') + '</td>';
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    target.innerHTML = html;
+    if (snapshot.scanned_at) {
+        document.getElementById('cat-last-scan').textContent = new Date(snapshot.scanned_at).toLocaleString();
+    }
+}
+
+function runCategorizationScan(domain) {
+    var target = document.getElementById('cat-results');
+    if (target) target.innerHTML = '<span class="loading">Scanning categorization providers...</span>';
+    fetch('/api/categorization/scan/' + encodeURIComponent(domain), {method: 'POST'})
+        .then(r => r.json())
+        .then(snapshot => {
+            renderCategorizationResult(snapshot || {});
+        })
+        .catch(() => {
+            if (target) target.innerHTML = '<span class="status-down">Categorization scan failed.</span>';
+        });
+}
+
+function renderVtDetail(r) {
+    var card = document.getElementById('rep-vt');
+    var statusEl = card.querySelector('.rep-status');
+    var detailEl = card.querySelector('.rep-detail');
+
+    if (r.status === 'not_configured') {
+        statusEl.innerHTML = '<span class="status-warn">API key not configured</span>';
+        detailEl.innerHTML = '<a href="/settings">Configure in Settings</a>';
+        return;
+    }
+    if (r.status === 'not_found') { statusEl.innerHTML = '<span class="status-warn">Not in database</span>'; return; }
+    if (r.status === 'rate_limited') { statusEl.innerHTML = '<span class="status-warn">Rate limited — try again in 1 min</span>'; return; }
+    if (r.status === 'error') { statusEl.innerHTML = '<span class="status-down">' + r.message + '</span>'; return; }
+
+    if (r.status === 'checked') {
+        var mal = r.malicious || 0;
+        var sus = r.suspicious || 0;
+        var clean = r.clean || 0;
+
+        if (mal > 0) {
+            statusEl.innerHTML = '<span class="status-down">' + mal + ' vendor(s) flagged as malicious</span>';
+        } else if (sus > 0) {
+            statusEl.innerHTML = '<span class="status-warn">' + sus + ' vendor(s) flagged as suspicious</span>';
+        } else {
+            statusEl.innerHTML = '<span class="status-up">Clean — ' + clean + ' vendors OK</span>';
+        }
+
+        var html = '';
+        if (r.categories && Object.keys(r.categories).length) {
+            html += '<div class="rep-section"><strong>Categories:</strong><ul>';
+            for (var engine in r.categories) {
+                html += '<li>' + engine + ': ' + r.categories[engine] + '</li>';
+            }
+            html += '</ul></div>';
+        }
+        if (r.flagged_vendors && r.flagged_vendors.length) {
+            html += '<div class="rep-section"><strong>Flagged by:</strong><ul>';
+            r.flagged_vendors.forEach(function(v) {
+                html += '<li class="text-red">' + v.vendor + ': ' + v.result + ' (' + v.category + ')</li>';
+            });
+            html += '</ul></div>';
+        }
+        html += '<div class="rep-section"><small>Reputation score: ' + (r.reputation_score || 0) + '</small></div>';
+        detailEl.innerHTML = html;
+    }
+}
+
+function renderAbuseDetail(r) {
+    var card = document.getElementById('rep-abuseipdb');
+    var statusEl = card.querySelector('.rep-status');
+    var detailEl = card.querySelector('.rep-detail');
+
+    if (r.status === 'not_configured') {
+        statusEl.innerHTML = '<span class="status-warn">API key not configured</span>';
+        detailEl.innerHTML = '<a href="/settings">Configure in Settings</a>';
+        return;
+    }
+    if (r.status === 'dns_failed') { statusEl.innerHTML = '<span class="status-warn">Could not resolve domain IP</span>'; return; }
+    if (r.status === 'error') { statusEl.innerHTML = '<span class="status-down">' + r.message + '</span>'; return; }
+
+    if (r.status === 'checked') {
+        var score = r.abuse_score || 0;
+        if (score > 50) {
+            statusEl.innerHTML = '<span class="status-down">Abuse score: ' + score + '%</span>';
+        } else if (score > 0) {
+            statusEl.innerHTML = '<span class="status-warn">Abuse score: ' + score + '%</span>';
+        } else {
+            statusEl.innerHTML = '<span class="status-up">Clean — 0% abuse confidence</span>';
+        }
+
+        var html = '<div class="rep-section">';
+        html += '<div>IP: <code>' + r.ip + '</code></div>';
+        html += '<div>ISP: ' + (r.isp || 'Unknown') + '</div>';
+        html += '<div>Country: ' + (r.country || 'Unknown') + '</div>';
+        html += '<div>Reports: ' + (r.total_reports || 0) + ' (last 90 days)</div>';
+        if (r.is_whitelisted) html += '<div class="status-up">Whitelisted</div>';
+        html += '</div>';
+        detailEl.innerHTML = html;
+    }
+}
+
+function renderUrlhausDetail(r) {
+    var card = document.getElementById('rep-urlhaus');
+    var statusEl = card.querySelector('.rep-status');
+    var detailEl = card.querySelector('.rep-detail');
+
+    if (r.status === 'error') { statusEl.innerHTML = '<span class="status-down">' + r.message + '</span>'; return; }
+    if (r.status === 'clean') {
+        statusEl.innerHTML = '<span class="status-up">Clean — no malicious URLs</span>';
+        return;
+    }
+    if (r.status === 'flagged') {
+        statusEl.innerHTML = '<span class="status-down">' + r.urls_count + ' malicious URL(s) found</span>';
+        var html = '<div class="rep-section">';
+        if (r.first_seen) html += '<div>First seen: ' + r.first_seen + '</div>';
+        if (r.tags && r.tags.length) html += '<div>Tags: ' + r.tags.join(', ') + '</div>';
+        if (r.recent_urls && r.recent_urls.length) {
+            html += '<div><strong>Recent URLs:</strong><ul>';
+            r.recent_urls.forEach(function(u) {
+                html += '<li><code>' + u.url + '</code> — ' + u.threat + ' (' + u.status + ')</li>';
+            });
+            html += '</ul></div>';
+        }
+        html += '</div>';
+        detailEl.innerHTML = html;
+        return;
+    }
+    if (r.status === 'checked') {
+        statusEl.innerHTML = '<span class="status-up">OK</span>';
+    }
+}
+
+(function initStoredReputation() {
+    var snapshot = {{ (domain.reputation_snapshot or {}) | tojson }};
+    if (!snapshot || !snapshot.results || !snapshot.results.length) {
+        return;
+    }
+    snapshot.results.forEach(function(r) {
+        if (r.service === 'VirusTotal') renderVtDetail(r);
+        else if (r.service === 'AbuseIPDB') renderAbuseDetail(r);
+        else if (r.service === 'URLhaus') renderUrlhausDetail(r);
+    });
+    if (snapshot.scanned_at) {
+        document.getElementById('rep-last-scan').textContent = new Date(snapshot.scanned_at).toLocaleString();
+    }
+})();
+
+(function initStoredCategorization() {
+    var snapshot = {{ (domain.categorization_snapshot or {}) | tojson }};
+    renderCategorizationResult(snapshot || {});
+})();
+</script>
+{% endblock %}

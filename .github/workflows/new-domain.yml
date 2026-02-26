@@ -1,0 +1,169 @@
+name: New Domain Setup
+
+on:
+  workflow_dispatch:
+    inputs:
+      domain:
+        description: 'Domain name (e.g., example.com)'
+        required: true
+        type: string
+      category:
+        description: 'Template category'
+        required: true
+        type: choice
+        options:
+          - technology
+          - consulting
+          - finance
+          - healthcare
+          - education
+          - news
+          - marketing
+          - ecommerce
+      company_name:
+        description: 'Company name (leave blank for default)'
+        required: false
+        type: string
+      visibility:
+        description: 'Repository visibility'
+        required: true
+        type: choice
+        options:
+          - public
+          - private
+        default: public
+
+jobs:
+  setup-domain:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set company name
+        id: company
+        run: |
+          if [[ -n "${{ inputs.company_name }}" ]]; then
+            echo "name=${{ inputs.company_name }}" >> "$GITHUB_OUTPUT"
+          else
+            case "${{ inputs.category }}" in
+              technology)  echo "name=NovaTech Solutions" >> "$GITHUB_OUTPUT" ;;
+              consulting)  echo "name=Meridian Consulting Group" >> "$GITHUB_OUTPUT" ;;
+              finance)     echo "name=Pinnacle Wealth Advisors" >> "$GITHUB_OUTPUT" ;;
+              healthcare)  echo "name=Horizon Health Partners" >> "$GITHUB_OUTPUT" ;;
+              education)   echo "name=Evergreen Institute" >> "$GITHUB_OUTPUT" ;;
+              news)        echo "name=The Daily Benchmark" >> "$GITHUB_OUTPUT" ;;
+              marketing)   echo "name=Spark Creative Agency" >> "$GITHUB_OUTPUT" ;;
+              ecommerce)   echo "name=Oakwood Home Goods" >> "$GITHUB_OUTPUT" ;;
+              *)           echo "name=Company Name" >> "$GITHUB_OUTPUT" ;;
+            esac
+          fi
+
+      - name: Create domain repository
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DOMAIN="${{ inputs.domain }}"
+          CATEGORY="${{ inputs.category }}"
+          COMPANY_NAME="${{ steps.company.outputs.name }}"
+          REPO_NAME="${DOMAIN//./-}"
+          VISIBILITY="${{ inputs.visibility }}"
+
+          echo "Setting up $DOMAIN with $CATEGORY template as $COMPANY_NAME"
+
+          # Create the new repo
+          gh repo create "$REPO_NAME" --"$VISIBILITY" \
+            --description "$COMPANY_NAME - $CATEGORY website" || true
+
+          # Prepare template files in a temp directory
+          TMPDIR=$(mktemp -d)
+          cp -r "templates/$CATEGORY/"* "$TMPDIR/"
+
+          # Replace placeholders
+          find "$TMPDIR" -type f \( -name "*.html" -o -name "*.css" -o -name "*.js" \) | while read -r file; do
+            sed -i "s/{{COMPANY_NAME}}/$COMPANY_NAME/g" "$file"
+            sed -i "s/{{DOMAIN}}/$DOMAIN/g" "$file"
+          done
+
+          # Add CNAME
+          echo "$DOMAIN" > "$TMPDIR/CNAME"
+
+          # Clone, commit, push
+          gh repo clone "$REPO_NAME" "$TMPDIR/repo" -- -q 2>/dev/null || {
+            mkdir -p "$TMPDIR/repo"
+            cd "$TMPDIR/repo"
+            git init -q
+            git remote add origin "https://github.com/${{ github.repository_owner }}/$REPO_NAME.git"
+          }
+
+          # Move files into repo (excluding .git)
+          cp -r "$TMPDIR/"*.html "$TMPDIR/repo/" 2>/dev/null || true
+          cp -r "$TMPDIR/css" "$TMPDIR/repo/" 2>/dev/null || true
+          cp -r "$TMPDIR/js" "$TMPDIR/repo/" 2>/dev/null || true
+          cp -r "$TMPDIR/images" "$TMPDIR/repo/" 2>/dev/null || true
+          cp "$TMPDIR/CNAME" "$TMPDIR/repo/"
+
+          cd "$TMPDIR/repo"
+          git add -A
+          git commit -m "Initial deployment: $COMPANY_NAME ($CATEGORY template)"
+          git branch -M main
+          git push -u origin main
+
+          echo "Repository created and deployed: $REPO_NAME"
+
+      - name: Enable GitHub Pages
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REPO_NAME="${{ inputs.domain }}"
+          REPO_NAME="${REPO_NAME//./-}"
+          gh api -X PUT "repos/${{ github.repository_owner }}/$REPO_NAME/pages" \
+            -f "source[branch]=main" \
+            -f "source[path]=/" || echo "Pages may need manual setup"
+
+      - name: Update domains.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DOMAIN="${{ inputs.domain }}"
+          REPO_NAME="${DOMAIN//./-}"
+          CATEGORY="${{ inputs.category }}"
+          TODAY="$(date +%Y-%m-%d)"
+
+          jq --arg name "$DOMAIN" \
+             --arg repo "$REPO_NAME" \
+             --arg cat "$CATEGORY" \
+             --arg date "$TODAY" \
+             '.domains += [{name: $name, repo: $repo, category: $cat, purchaseDate: $date, status: "deployed", notes: ""}]' \
+             domains.json > domains.json.tmp
+          mv domains.json.tmp domains.json
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add domains.json
+          git commit -m "Add $DOMAIN to tracking"
+          git push
+
+      - name: Print summary
+        run: |
+          DOMAIN="${{ inputs.domain }}"
+          REPO_NAME="${DOMAIN//./-}"
+          echo "## Domain Setup Complete" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Domain:** $DOMAIN" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Repository:** $REPO_NAME" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Category:** ${{ inputs.category }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Company:** ${{ steps.company.outputs.name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### DNS Setup" >> "$GITHUB_STEP_SUMMARY"
+          echo "Add these A records: 185.199.108.153, 185.199.109.153, 185.199.110.153, 185.199.111.153" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Categorization Links" >> "$GITHUB_STEP_SUMMARY"
+          echo "- [Bluecoat](https://sitereview.bluecoat.com)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- [Fortiguard](https://fortiguard.com/webfilter)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- [Palo Alto](https://urlfiltering.paloaltonetworks.com)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- [IBM X-Force](https://exchange.xforce.ibmcloud.com)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- [Trellix](https://trustedsource.org)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- [Cisco Talos](https://talosintelligence.com/reputation_center)" >> "$GITHUB_STEP_SUMMARY"

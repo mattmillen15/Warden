@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contact Us — {{COMPANY_NAME}}</title>
+  <meta name="description" content="Schedule a cardiology appointment at {{COMPANY_NAME}}. Call (555) 555-0100 or use our online form. Located at 6025 Walnut Grove Road, Suite 310, Your City, ST 38120.">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://{{DOMAIN}}/contact.html">
+
+  <meta property="og:title" content="Contact Us — {{COMPANY_NAME}}">
+  <meta property="og:description" content="Schedule a cardiac consultation or get in touch with our cardiology care team.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://{{DOMAIN}}/contact.html">
+
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Contact Us — {{COMPANY_NAME}}">
+
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="container">
+      <a href="index.html" class="logo">
+        <span class="logo-icon">MHC</span>
+        {{COMPANY_NAME}}
+      </a>
+      <nav class="nav-links">
+        <a href="index.html">Home</a>
+        <a href="about.html">About</a>
+        <a href="services.html">Services</a>
+        <a href="blog.html">Blog</a>
+        <a href="contact.html" class="active">Contact</a>
+        <a href="contact.html" class="nav-cta">Schedule Consultation</a>
+      </nav>
+      <button class="nav-toggle" aria-label="Toggle navigation">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Page Header -->
+  <section class="page-header">
+    <div class="container">
+      <h1>Contact Us</h1>
+      <p>We are here to help — reach out to schedule a consultation or ask a question</p>
+    </div>
+  </section>
+
+  <!-- Contact Section -->
+  <section class="section">
+    <div class="container">
+      <div class="contact-grid">
+
+        <!-- Form -->
+        <div>
+          <div class="contact-form" id="contactFormWrapper">
+            <h3>Request a Cardiac Consultation</h3>
+            <p style="margin-bottom: 1.5rem;">Fill out the form below and our scheduling team will contact you within one business day to confirm your appointment. A referral from your primary care physician is recommended but not required for most services.</p>
+
+            <form id="contactForm">
+              <div class="form-group">
+                <label for="fullName">Full Name *</label>
+                <input type="text" id="fullName" name="fullName" placeholder="John Smith" required>
+              </div>
+              <div class="form-group">
+                <label for="email">Email Address *</label>
+                <input type="email" id="email" name="email" placeholder="john@example.com" required>
+              </div>
+              <div class="form-group">
+                <label for="phone">Phone Number *</label>
+                <input type="tel" id="phone" name="phone" placeholder="(901) 555-0000" required>
+              </div>
+              <div class="form-group">
+                <label for="reason">Reason for Visit *</label>
+                <select id="reason" name="reason" required>
+                  <option value="" disabled selected>Select a reason</option>
+                  <option value="new-patient">New Patient Consultation</option>
+                  <option value="preventive">Preventive Cardiology / Risk Assessment</option>
+                  <option value="diagnostic">Diagnostic Testing (Echo, Stress Test, etc.)</option>
+                  <option value="interventional">Interventional Cardiology</option>
+                  <option value="electrophysiology">Electrophysiology / Arrhythmia</option>
+                  <option value="heart-failure">Heart Failure Management</option>
+                  <option value="vascular">Vascular Medicine</option>
+                  <option value="follow-up">Follow-Up Visit</option>
+                  <option value="second-opinion">Second Opinion</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="preferredTime">Preferred Appointment Time</label>
+                <select id="preferredTime" name="preferredTime">
+                  <option value="" disabled selected>Select preferred time</option>
+                  <option value="early-morning">Early Morning (7:30 AM - 9:30 AM)</option>
+                  <option value="late-morning">Late Morning (9:30 AM - 12:00 PM)</option>
+                  <option value="early-afternoon">Early Afternoon (12:00 PM - 2:30 PM)</option>
+                  <option value="late-afternoon">Late Afternoon (2:30 PM - 5:00 PM)</option>
+                  <option value="flexible">Flexible / No Preference</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="referringPhysician">Referring Physician (if applicable)</label>
+                <input type="text" id="referringPhysician" name="referringPhysician" placeholder="Dr. Name, Practice Name">
+              </div>
+              <div class="form-group">
+                <label for="message">Additional Notes</label>
+                <textarea id="message" name="message" placeholder="Describe your symptoms or reason for consultation. Include any relevant medical history..."></textarea>
+              </div>
+              <button type="submit" class="btn btn-primary btn-lg" style="width:100%;justify-content:center;">Request Consultation</button>
+              <p class="form-note">* Required fields. This form is for appointment requests only. <strong>For chest pain, difficulty breathing, or any cardiac emergency, call 911 immediately.</strong> Your information is protected under our <a href="privacy.html">privacy policy</a>.</p>
+            </form>
+
+            <div class="form-success">
+              <div class="form-success-icon">&#10003;</div>
+              <h3>Thank you for your request!</h3>
+              <p>Our scheduling team will contact you within one business day to confirm your appointment. If you need immediate assistance, please call us at <a href="tel:+15555550100">(555) 555-0100</a>.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Contact Info -->
+        <div class="contact-info">
+          <div class="contact-info-card">
+            <h4>Office Location</h4>
+            <p>6025 Walnut Grove Road, Suite 310</p>
+            <p>Your City, ST 38120</p>
+            <p style="margin-top: 0.5rem; font-size: 0.82rem; color: var(--color-gray-400);">Located at the corner of Walnut Grove Road and Shady Grove Road, near Baptist Memorial Hospital East. Free parking available on-site. The building is fully ADA-accessible.</p>
+          </div>
+
+          <div class="contact-info-card">
+            <h4>Phone &amp; Email</h4>
+            <p><strong>Phone:</strong> <a href="tel:+15555550100">(555) 555-0100</a></p>
+            <p><strong>Fax:</strong> (555) 555-0100</p>
+            <p><strong>Email:</strong> <a href="mailto:info@{{DOMAIN}}">info@{{DOMAIN}}</a></p>
+            <p><strong>Patient Portal:</strong> Access your test results, appointment history, and messaging through our secure patient portal. Ask our front desk for login credentials at your next visit.</p>
+          </div>
+
+          <div class="contact-info-card">
+            <h4>Office Hours</h4>
+            <table class="hours-table">
+              <tr>
+                <td>Monday</td>
+                <td>7:30 AM &ndash; 5:00 PM</td>
+              </tr>
+              <tr>
+                <td>Tuesday</td>
+                <td>7:30 AM &ndash; 5:00 PM</td>
+              </tr>
+              <tr>
+                <td>Wednesday</td>
+                <td>7:30 AM &ndash; 5:00 PM</td>
+              </tr>
+              <tr>
+                <td>Thursday</td>
+                <td>7:30 AM &ndash; 5:00 PM</td>
+              </tr>
+              <tr>
+                <td>Friday</td>
+                <td>7:30 AM &ndash; 5:00 PM</td>
+              </tr>
+              <tr>
+                <td>Saturday</td>
+                <td>By Appointment Only</td>
+              </tr>
+              <tr>
+                <td>Sunday</td>
+                <td>Closed</td>
+              </tr>
+            </table>
+          </div>
+
+          <div class="contact-info-card">
+            <h4>New Patient Information</h4>
+            <p>Welcome to {{COMPANY_NAME}}. To help your first visit go smoothly, please bring the following:</p>
+            <p style="margin-top:0.5rem;"><strong>&#8226;</strong> Photo ID and insurance card</p>
+            <p><strong>&#8226;</strong> List of current medications and dosages</p>
+            <p><strong>&#8226;</strong> Referral from your primary care physician (if applicable)</p>
+            <p><strong>&#8226;</strong> Prior cardiac test results or medical records (if available)</p>
+            <p><strong>&#8226;</strong> Completed new patient forms (available at our front desk or by request)</p>
+          </div>
+
+          <div class="contact-info-card">
+            <h4>Insurance Accepted</h4>
+            <p>We accept most major insurance plans including Aetna, Blue Cross Blue Shield, Cigna, UnitedHealthcare, Humana, Medicare, Medicaid, and TriCare. If you do not see your plan listed, please call our billing department at <a href="tel:+15555550100">(555) 555-0100</a> to verify coverage.</p>
+          </div>
+
+          <div class="contact-info-card">
+            <h4>Cardiac Emergency</h4>
+            <p><strong>If you are experiencing chest pain, severe shortness of breath, loss of consciousness, or symptoms of a heart attack or stroke, call 911 immediately.</strong> Do not drive yourself to the hospital. Our office is not equipped to handle acute cardiac emergencies — call 911 or go to the nearest emergency department.</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <a href="index.html" class="logo" style="color:#fff;">
+            <span class="logo-icon">MHC</span>
+            {{COMPANY_NAME}}
+          </a>
+          <p>Delivering compassionate, evidence-based cardiac care to the Your City community since 2012.</p>
+        </div>
+        <div>
+          <h4>Quick Links</h4>
+          <div class="footer-links">
+            <a href="about.html">About Us</a>
+            <a href="services.html">Services</a>
+            <a href="blog.html">Blog</a>
+            <a href="contact.html">Contact</a>
+          </div>
+        </div>
+        <div>
+          <h4>Services</h4>
+          <div class="footer-links">
+            <a href="services.html">Preventive Cardiology</a>
+            <a href="services.html">Interventional Procedures</a>
+            <a href="services.html">Cardiac Imaging</a>
+            <a href="services.html">Heart Failure Program</a>
+          </div>
+        </div>
+        <div>
+          <h4>Contact</h4>
+          <div class="footer-links">
+            <a href="tel:+15555550100">(555) 555-0100</a>
+            <a href="mailto:info@{{DOMAIN}}">info@{{DOMAIN}}</a>
+            <a href="contact.html">6025 Walnut Grove Road, Suite 310<br>Your City, ST 38120</a>
+          </div>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>&copy; 2025 {{COMPANY_NAME}}. All rights reserved.</span>
+        <a href="privacy.html">Privacy Policy</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="js/main.js"></script>
+</body>
+</html>

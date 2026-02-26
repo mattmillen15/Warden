@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{COMPANY_NAME}} - Local Reporting & Analysis</title>
+  <meta name="description" content="{{COMPANY_NAME}} provides local reporting, business coverage, and community updates with clear analysis and practical context.">
+  <meta name="keywords" content="local news, community reporting, business news, analysis, public affairs, local coverage">
+  <link rel="canonical" href="https://{{DOMAIN}}/">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="{{COMPANY_NAME}} - Local Reporting. Clear Context.">
+  <meta property="og:description" content="Local reporting, business coverage, and community updates with clear analysis and practical context.">
+  <meta property="og:url" content="https://{{DOMAIN}}/">
+  <meta property="og:site_name" content="{{COMPANY_NAME}}">
+  <meta property="og:locale" content="en_US">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="{{COMPANY_NAME}} - Local Reporting. Clear Context.">
+  <meta name="twitter:description" content="Local reporting, business coverage, and community updates with clear analysis and practical context.">
+
+  <link rel="stylesheet" href="css/style.css">
+
+  <!-- JSON-LD Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "NewsMediaOrganization",
+    "name": "{{COMPANY_NAME}}",
+    "alternateName": "News Desk",
+    "url": "https://{{DOMAIN}}",
+    "description": "Local reporting and community news coverage with business updates, public-interest stories, and practical analysis.",
+    "address": {
+      "@type": "PostalAddress",
+      "streetAddress": "450 Main Street",
+      "addressLocality": "Springfield",
+      "addressRegion": "ST",
+      "postalCode": "65806",
+      "addressCountry": "US"
+    },
+    "telephone": "(555) 555-0100",
+    "email": "info@{{DOMAIN}}",
+    "foundingDate": "1987",
+    "areaServed": {
+      "@type": "GeoCircle",
+      "geoMidpoint": {
+        "@type": "GeoCoordinates",
+        "latitude": 37.2089,
+        "longitude": -93.2923
+      },
+      "geoRadius": "50 mi"
+    },
+    "numberOfEmployees": {
+      "@type": "QuantitativeValue",
+      "minValue": 50,
+      "maxValue": 100
+    },
+    "slogan": "Local Reporting. Clear Context.",
+    "publishingPrinciples": "https://{{DOMAIN}}/about.html",
+    "ethicsPolicy": "https://{{DOMAIN}}/privacy.html",
+    "openingHoursSpecification": [
+      {
+        "@type": "OpeningHoursSpecification",
+        "dayOfWeek": ["Monday", "Tuesday", "Wednesday", "Thursday"],
+        "opens": "09:00",
+        "closes": "16:00"
+      },
+      {
+        "@type": "OpeningHoursSpecification",
+        "dayOfWeek": "Friday",
+        "opens": "09:00",
+        "closes": "18:00"
+      },
+      {
+        "@type": "OpeningHoursSpecification",
+        "dayOfWeek": "Saturday",
+        "opens": "09:00",
+        "closes": "12:00"
+      }
+    ],
+    "sameAs": []
+  }
+  </script>
+</head>
+<body>
+
+  <!-- ========== HEADER ========== -->
+  <header class="site-header">
+    <div class="container header-inner">
+      <a href="index.html" class="logo"><span>NEWS</span> {{COMPANY_NAME}}</a>
+      <nav>
+        <ul class="nav-links">
+          <li><a href="index.html" class="active">Home</a></li>
+          <li><a href="about.html">About</a></li>
+          <li><a href="services.html">Coverage</a></li>
+          <li><a href="blog.html">News & Analysis</a></li>
+          <li><a href="contact.html">Contact</a></li>
+          <li class="nav-cta"><a href="contact.html" class="btn btn--primary">Send a Tip</a></li>
+        </ul>
+      </nav>
+      <button class="hamburger" aria-label="Toggle navigation">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ========== HERO ========== -->
+  <section class="hero">
+    <div class="container">
+      <h1 class="fade-in">Local Reporting. Clear Context.</h1>
+      <p class="fade-in">{{COMPANY_NAME}} covers local business, public-interest stories, and community developments with reporting built for readers who want clear facts and useful context.</p>
+      <div class="hero-buttons fade-in">
+        <a href="contact.html" class="btn btn--primary">Send a Tip</a>
+        <a href="services.html" class="btn btn--outline">Explore Coverage</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== TRUST BAR ========== -->
+  <section class="trust-bar">
+    <div class="container">
+      <div class="trust-items fade-in">
+        <div class="trust-item">
+          <strong>Daily</strong>
+          <span>Publishing Updates</span>
+        </div>
+        <div class="trust-item">
+          <strong>Local</strong>
+          <span>Community Coverage</span>
+        </div>
+        <div class="trust-item">
+          <strong>Business</strong>
+          <span>Reporting & Analysis</span>
+        </div>
+        <div class="trust-item">
+          <strong>Reader</strong>
+          <span>Member Insured</span>
+        </div>
+        <div class="trust-item">
+          <strong>Local</strong>
+          <span>Decisions Made Here</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== SERVICES OVERVIEW ========== -->
+  <section class="section" id="services">
+    <div class="container">
+      <h2 class="text-center fade-in">Coverage That Keeps You Informed</h2>
+      <hr class="gold-rule">
+      <p class="section-subtitle fade-in">From local business updates to public-interest reporting, we cover the stories that affect day-to-day decisions.</p>
+
+      <div class="services-grid">
+        <div class="service-card fade-in">
+          <div class="service-icon">&#9670;</div>
+          <h3>Local Coverage</h3>
+          <p>City and neighborhood reporting with timely updates on events, public meetings, development, and community issues.</p>
+          <a href="services.html#local-coverage" class="learn-more">Learn more &rarr;</a>
+        </div>
+
+        <div class="service-card fade-in">
+          <div class="service-icon">&#9670;</div>
+          <h3>Business Coverage</h3>
+          <p>Reporting on local companies, economic changes, hiring trends, and the operating environment for small and midsize businesses.</p>
+          <a href="services.html#business-coverage" class="learn-more">Learn more &rarr;</a>
+        </div>
+
+        <div class="service-card fade-in">
+          <div class="service-icon">&#9670;</div>
+          <h3>Special Reports</h3>
+          <p>Long-form reporting and explainers covering local policy, public safety, schools, and issues that need more context than a headline.</p>
+          <a href="services.html#special-reports" class="learn-more">Learn more &rarr;</a>
+        </div>
+
+        <div class="service-card fade-in">
+          <div class="service-icon">&#9670;</div>
+          <h3>Newsletters & Alerts</h3>
+          <p>Recurring updates and digest-style summaries for readers who want a concise view of local developments and notable changes.</p>
+          <a href="services.html#newsletters-alerts" class="learn-more">Learn more &rarr;</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== TESTISTNIALS ========== -->
+  <section class="section section--alt" id="testimonials">
+    <div class="container">
+      <h2 class="text-center fade-in">What Readers Say</h2>
+      <hr class="gold-rule">
+
+      <div class="testimonials-grid">
+        <div class="testimonial-card fade-in">
+          <blockquote>When we needed a loan to expand our restaurant to a second location, the big banks said no. Jim Callahan and his team at CRB sat down with us, looked at our numbers, and said, 'Let's make this happen.' Three years later we employ 40 people. That's what a community bank does.</blockquote>
+          <div class="testimonial-author">Maria &amp; David Gutierrez</div>
+          <div class="testimonial-role">Owners, La Mesa Mexican Grill &mdash; Customers since 2016</div>
+        </div>
+
+        <div class="testimonial-card fade-in">
+          <blockquote>My family has banked with {{COMPANY_NAME}} since I was in high school. When my husband and I were ready to buy our first home, Rachel in the mortgage department walked us through every step. We never felt rushed or pressured. They genuinely wanted to find the right loan for us.</blockquote>
+          <div class="testimonial-author">Stephanie &amp; Mark Owens</div>
+          <div class="testimonial-role">First-time homebuyers &mdash; Customers since 2021</div>
+        </div>
+
+        <div class="testimonial-card fade-in">
+          <blockquote>I've been farming in Greene County for 35 years, and CRB has been my bank for most of them. They understand agriculture. When commodity prices dropped and I needed to restructure my operating line, Tom Vasquez worked with me instead of against me. That's the difference between a local bank and a corporate one.</blockquote>
+          <div class="testimonial-author">Harold "Hank" Jessup</div>
+          <div class="testimonial-role">Jessup Family Farms &mdash; Customer since 1994</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== CTA ========== -->
+  <section class="cta-section">
+    <div class="container">
+      <h2 class="fade-in">Have a Story We Should Cover?</h2>
+      <p class="fade-in">Send a tip, share context, or contact the desk about a developing story. We review reader submissions and follow up when more information is needed.</p>
+      <a href="contact.html" class="btn btn--primary fade-in">Contact the News Desk</a>
+    </div>
+  </section>
+
+  <!-- ========== FOOTER ========== -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <a href="index.html" class="logo"><span>NEWS</span> {{COMPANY_NAME}}</a>
+          <p>Local reporting and community coverage focused on clear facts, useful context, and timely updates.</p>
+        </div>
+        <div>
+          <h4>Coverage</h4>
+          <ul class="footer-links">
+            <li><a href="services.html#local-coverage">Local Coverage</a></li>
+            <li><a href="services.html#business-coverage">Business Coverage</a></li>
+            <li><a href="services.html#special-reports">Mortgage &amp; Home Loans</a></li>
+            <li><a href="services.html#newsletters-alerts">Agricultural Lending</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Company</h4>
+          <ul class="footer-links">
+            <li><a href="about.html">About Us</a></li>
+            <li><a href="blog.html">News & Analysis</a></li>
+            <li><a href="contact.html">Contact</a></li>
+            <li><a href="privacy.html">Privacy Policy</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Contact</h4>
+          <ul class="footer-links">
+            <li>450 Main Street<br>Your City, ST 65806</li>
+            <li><a href="tel:+15555550100">(555) 555-0100</a></li>
+            <li><a href="mailto:info@{{DOMAIN}}">info@{{DOMAIN}}</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>&copy; 2026 {{COMPANY_NAME}}. All rights reserved. | <a href="privacy.html">Privacy Policy</a></p>
+        <p class="disclosure">{{COMPANY_NAME}} publishes local reporting and community updates. Reader submissions may be edited for clarity, length, and verification before publication.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="js/main.js"></script>
+</body>
+</html>

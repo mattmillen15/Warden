@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+.venv/
+portal/.venv/
+portal/config.json
+domains.json
+portal/scan_state.json
+portal/email_log.json
+portal/.warden.key
+output/
+logs/
+warden/target/
+*.swp
+*.swo
+.DS_Store

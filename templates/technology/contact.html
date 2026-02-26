@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contact Us — {{COMPANY_NAME}}</title>
+    <meta name="description" content="Contact {{COMPANY_NAME}} for managed IT services, helpdesk support, and free IT assessments. Call our 24/7 emergency support line or visit our Your City, ST office.">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://{{COMPANY_NAME}}.com/contact.html">
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="Contact Us — {{COMPANY_NAME}}">
+    <meta property="og:description" content="Get in touch with {{COMPANY_NAME}} for managed IT services, helpdesk support, and free IT assessments.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://{{COMPANY_NAME}}.com/contact.html">
+    <meta property="og:image" content="https://{{COMPANY_NAME}}.com/images/og-banner.png">
+    <meta property="og:site_name" content="{{COMPANY_NAME}}">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Contact Us — {{COMPANY_NAME}}">
+    <meta name="twitter:description" content="Get in touch with {{COMPANY_NAME}} for managed IT services, helpdesk support, and free IT assessments.">
+    <meta name="twitter:image" content="https://{{COMPANY_NAME}}.com/images/og-banner.png">
+
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+    <!-- Navigation -->
+    <header class="site-header">
+        <nav class="navbar">
+            <div class="container nav-container">
+                <a href="index.html" class="nav-logo">
+                    <span class="logo-icon">24/7</span>
+                    <span class="logo-text">{{COMPANY_NAME}}</span>
+                </a>
+                <button class="nav-toggle" aria-label="Toggle navigation" aria-expanded="false">
+                    <span class="hamburger"></span>
+                </button>
+                <ul class="nav-menu">
+                    <li><a href="index.html" class="nav-link">Home</a></li>
+                    <li><a href="about.html" class="nav-link">About</a></li>
+                    <li><a href="services.html" class="nav-link">Services</a></li>
+                    <li><a href="blog.html" class="nav-link">Blog</a></li>
+                    <li><a href="contact.html" class="nav-link active">Contact</a></li>
+                    <li><a href="contact.html" class="nav-link btn-nav">Get IT Assessment</a></li>
+                </ul>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Page Header -->
+    <section class="page-header">
+        <div class="container">
+            <h1 class="fade-in">Contact Us</h1>
+            <p class="page-subtitle fade-in">Whether you need emergency support or want to discuss a new IT initiative, we are here to help.</p>
+        </div>
+    </section>
+
+    <!-- Contact Section -->
+    <section class="contact-section">
+        <div class="container">
+            <div class="contact-grid">
+
+                <!-- Contact Form -->
+                <div class="contact-form-wrapper fade-in">
+                    <h2>Request an IT Assessment</h2>
+                    <form class="contact-form" id="contactForm" action="#" method="POST">
+                        <div class="form-group">
+                            <label for="name">Full Name</label>
+                            <input type="text" id="name" name="name" placeholder="John Smith" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="email">Email Address</label>
+                            <input type="email" id="email" name="email" placeholder="john@company.com" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="subject">What Can We Help With?</label>
+                            <select id="subject" name="subject" required>
+                                <option value="" disabled selected>Select a topic</option>
+                                <option value="assessment">Free IT Assessment</option>
+                                <option value="managed">Managed IT Services</option>
+                                <option value="helpdesk">Helpdesk Support</option>
+                                <option value="cloud">Cloud Migration / Microsoft 365</option>
+                                <option value="security">Cybersecurity</option>
+                                <option value="onsite">On-Site Support</option>
+                                <option value="general">General Inquiry</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="message">Message</label>
+                            <textarea id="message" name="message" rows="6" placeholder="Tell us about your IT environment, current challenges, or what you are looking for..." required></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-full">Submit Request</button>
+                    </form>
+                    <div class="form-success" id="formSuccess" style="display: none;">
+                        <div class="success-icon">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                            </svg>
+                        </div>
+                        <h3>Thank You!</h3>
+                        <p>Your request has been received. A member of our team will get back to you within one business day. For urgent IT issues, please call our 24/7 support line at (555) 555-0100.</p>
+                    </div>
+                </div>
+
+                <!-- Contact Info -->
+                <div class="contact-info fade-in">
+                    <div class="info-card">
+                        <h3>Emergency Support Hotline</h3>
+                        <p><a href="tel:+15555550100"><strong>(555) 555-0100</strong></a><br>Available 24/7/365 for critical IT issues.<br>Managed services clients receive priority routing.</p>
+                    </div>
+                    <div class="info-card">
+                        <h3>Support Portal</h3>
+                        <p>Existing clients can submit and track tickets at<br><a href="#">support.{{COMPANY_NAME}}.com</a><br>Includes self-service knowledge base and remote assistance tools.</p>
+                    </div>
+                    <div class="info-card">
+                        <h3>Office</h3>
+                        <p>2400 Commerce Street, Suite 1200<br>Your City, ST 75201</p>
+                    </div>
+                    <div class="info-card">
+                        <h3>Email</h3>
+                        <p><a href="mailto:support@{{COMPANY_NAME}}.com">support@{{COMPANY_NAME}}.com</a></p>
+                    </div>
+                    <div class="info-card">
+                        <h3>Business Hours</h3>
+                        <p>Office: Monday &ndash; Friday, 8:00 AM &ndash; 6:00 PM CT<br>Helpdesk & NOC: 24/7/365<br>Emergency support line: Always available</p>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+        <div class="container">
+            <div class="footer-grid">
+                <div class="footer-brand">
+                    <a href="index.html" class="nav-logo">
+                        <span class="logo-icon">24/7</span>
+                        <span class="logo-text">{{COMPANY_NAME}}</span>
+                    </a>
+                    <p>Enterprise IT support and managed services that keep your business running around the clock.</p>
+                </div>
+                <div class="footer-nav">
+                    <h4>Company</h4>
+                    <ul>
+                        <li><a href="about.html">About Us</a></li>
+                        <li><a href="services.html">Services</a></li>
+                        <li><a href="blog.html">Blog</a></li>
+                        <li><a href="contact.html">Contact</a></li>
+                    </ul>
+                </div>
+                <div class="footer-nav">
+                    <h4>Services</h4>
+                    <ul>
+                        <li><a href="services.html">Managed IT Services</a></li>
+                        <li><a href="services.html">24/7 Helpdesk</a></li>
+                        <li><a href="services.html">Cloud Services</a></li>
+                        <li><a href="services.html">Cybersecurity</a></li>
+                        <li><a href="services.html">On-Site Support</a></li>
+                    </ul>
+                </div>
+                <div class="footer-nav">
+                    <h4>Connect</h4>
+                    <ul>
+                        <li><a href="#" target="_blank" rel="noopener noreferrer">LinkedIn</a></li>
+                        <li><a href="#" target="_blank" rel="noopener noreferrer">Twitter</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2025 {{COMPANY_NAME}}. All rights reserved.</p>
+                <div class="footer-legal">
+                    <a href="privacy.html">Privacy Policy</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,59 @@
+name: Domain Health Check
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # Daily at 6:00 AM UTC
+  workflow_dispatch:       # Allow manual trigger
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check domain health
+        run: |
+          echo "## Domain Health Check - $(date -u '+%Y-%m-%d %H:%M UTC')" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Domain | Status | HTTP Code | Response Time |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|--------|--------|-----------|---------------|" >> "$GITHUB_STEP_SUMMARY"
+
+          FAILED=0
+          TOTAL=0
+
+          # Read domains from domains.json
+          for domain in $(jq -r '.domains[] | select(.status != "burned" and .status != "retired") | .name' domains.json); do
+            TOTAL=$((TOTAL + 1))
+
+            # Curl with timeout, capture HTTP code and time
+            HTTP_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}|%{time_total}" \
+              --max-time 30 --connect-timeout 10 \
+              "https://$domain" 2>/dev/null) || HTTP_RESPONSE="000|0"
+
+            HTTP_CODE=$(echo "$HTTP_RESPONSE" | cut -d'|' -f1)
+            RESPONSE_TIME=$(echo "$HTTP_RESPONSE" | cut -d'|' -f2)
+
+            if [[ "$HTTP_CODE" =~ ^(200|301|302)$ ]]; then
+              STATUS="✅ OK"
+            else
+              STATUS="❌ DOWN"
+              FAILED=$((FAILED + 1))
+            fi
+
+            echo "| $domain | $STATUS | $HTTP_CODE | ${RESPONSE_TIME}s |" >> "$GITHUB_STEP_SUMMARY"
+            echo "$domain: HTTP $HTTP_CODE (${RESPONSE_TIME}s) - $STATUS"
+          done
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Total:** $TOTAL domains checked, $FAILED failed" >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ $TOTAL -eq 0 ]]; then
+            echo "No active domains found in domains.json"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "_No active domains to check._" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          if [[ $FAILED -gt 0 ]]; then
+            echo "::warning::$FAILED domain(s) returned non-OK status"
+          fi

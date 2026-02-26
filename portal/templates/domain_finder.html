@@ -1,0 +1,531 @@
+{% extends "base.html" %}
+{% block title %}Warden — Domain Finder{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Domain Finder</h1>
+</div>
+
+<div class="detail-grid">
+    <div class="card">
+        <div class="card-header"><h2>Search Available Domains</h2></div>
+        <div class="card-body">
+            <p class="card-desc">Custom discovery engine: certificate history + RDAP availability + Wayback signals, scored for domain quality.</p>
+            <div class="form-group">
+                <label>Keyword (optional)</label>
+                <input type="text" id="df-keyword" placeholder="e.g. health, finance, research">
+            </div>
+            <div class="form-group">
+                <label>Category Profile (optional)</label>
+                <select id="df-category">
+                    <option value="">Any</option>
+                    {% for cat in categories %}
+                    <option value="{{ cat }}">{{ cat | replace('_', ' ') | title }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>TLD</label>
+                <select id="df-tld">
+                    <option value="com">.com</option>
+                    <option value="net">.net</option>
+                    <option value="org">.org</option>
+                    <option value="io">.io</option>
+                    <option value="co">.co</option>
+                    <option value="">(any)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Min Backlinks</label>
+                <input type="number" id="df-bl" value="5" min="0">
+            </div>
+            <div class="form-group">
+                <label>Min Archive Age (years)</label>
+                <input type="number" id="df-age" value="1" min="0">
+            </div>
+            <div class="form-group">
+                <label>Max Results</label>
+                <input type="number" id="df-max" value="30" min="5" max="100">
+            </div>
+            <div class="form-group">
+                <label>Minimum Score Filter (0-100)</label>
+                <input type="number" id="df-min-score" value="40" min="0" max="100">
+            </div>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="df-readable" checked style="width:auto; margin-right:8px;">
+                    Prefer human-readable names only
+                </label>
+            </div>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="df-available-only" checked style="width:auto; margin-right:8px;">
+                    Only include currently available domains
+                </label>
+            </div>
+            <button class="btn btn-primary btn-full" onclick="searchDomains(this)">Search</button>
+            <div id="search-progress-wrap" style="display:none; margin-top:12px;">
+                <div style="height:8px; background:#e5e7eb; border-radius:999px; overflow:hidden;">
+                    <div id="search-progress-bar" style="height:8px; width:0%; background:#2563eb; transition:width .25s ease;"></div>
+                </div>
+                <small id="search-progress-text" class="text-muted">Searching domain intelligence sources...</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="card" id="results-card">
+        <div class="card-header">
+            <h2>Search Results</h2>
+            <span class="badge badge-category" id="results-count">0 domains</span>
+        </div>
+        <div id="results-container">
+            <div class="card-body">
+                <p class="text-muted">Run a search to load ranked available domains.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card" id="due-diligence-card">
+    <div class="card-header"><h2>Domain Due-Diligence</h2></div>
+    <div class="card-body">
+        <p class="card-desc">Run WHOIS, Wayback, VirusTotal, and categorization checks for a single domain candidate.</p>
+        <div class="form-group">
+            <label>Domain</label>
+            <input type="text" id="lookup-domain" placeholder="example.com">
+        </div>
+        <div class="action-btns">
+            <button class="btn btn-primary" onclick="runDueDiligenceFromInput()">All Checks</button>
+            <button class="btn" onclick="whoisLookup()">WHOIS</button>
+            <button class="btn" onclick="waybackLookup()">Wayback</button>
+            <button class="btn" onclick="virusTotalLookup()">VirusTotal</button>
+            <button class="btn" onclick="runCategorizationFromInput()">Categorization</button>
+        </div>
+        <div id="lookup-result" style="margin-top: 16px;"></div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header"><h2>Scoring Guide</h2></div>
+    <div class="card-body">
+        <p class="card-desc">Higher scores indicate stronger historical trust signals and cleaner domain quality characteristics.</p>
+        <table class="data-table">
+            <thead><tr><th>Factor</th><th>Weight</th><th>Interpretation</th></tr></thead>
+            <tbody>
+                <tr><td>Backlinks</td><td>0-25</td><td>More quality backlinks generally indicate stronger historical presence.</td></tr>
+                <tr><td>Archive Age</td><td>0-25</td><td>Older historical snapshots can reduce “new domain” risk signals.</td></tr>
+                <tr><td>Domain Pop</td><td>0-25</td><td>More referring domains usually means broader historical trust.</td></tr>
+                <tr><td>TLD Quality</td><td>0-15</td><td>Mainstream TLDs often face fewer trust hurdles.</td></tr>
+                <tr><td>Name Quality</td><td>0-10</td><td>Readable names without noise patterns are generally cleaner.</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+function normalizeDomain(value) {
+    return (value || '').trim().toLowerCase();
+}
+
+function escapeHtml(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function qualityLabel(score) {
+    if (score >= 75) return 'High';
+    if (score >= 55) return 'Medium';
+    if (score >= 35) return 'Review';
+    return 'Low';
+}
+
+function renderCategorizationIntel(cat) {
+    var html = '<div class="guide-section"><h3>Category Intelligence</h3>';
+    if (!cat || cat.error) {
+        html += '<p class="text-muted">Category intelligence unavailable.</p></div>';
+        return html;
+    }
+
+    var primary = cat.primary_category || 'unknown';
+    var confidence = cat.confidence || 'low';
+    var labels = cat.labels || [];
+    var sources = cat.sources || [];
+    var details = cat.details || [];
+    var providerResults = cat.provider_results || [];
+    var categorizationEngine = cat.categorization_engine || {};
+    var threat = cat.threat || {};
+    var vt = threat.virustotal || {};
+    var abuse = threat.abuseipdb || {};
+    var urlhaus = threat.urlhaus || {};
+
+    html += '<table class="data-table"><tbody>';
+    html += '<tr><td>Primary Category</td><td><strong>' + escapeHtml(primary) + '</strong></td></tr>';
+    html += '<tr><td>Confidence</td><td>' + escapeHtml(confidence) + '</td></tr>';
+    html += '<tr><td>Sources</td><td>' + escapeHtml(sources.length ? sources.join(', ') : 'None') + '</td></tr>';
+    html += '<tr><td>Alt Labels</td><td>' + escapeHtml(labels.length ? labels.join(', ') : 'None') + '</td></tr>';
+    html += '<tr><td>Categorization Engine</td><td>' + (categorizationEngine.success ? '<span class="status-up">Ready</span>' : '<span class="status-warn">Partial</span>') + '</td></tr>';
+    html += '</tbody></table>';
+
+    if (providerResults.length) {
+        html += '<div style="margin-top:10px;"><strong>Vendor Categorization</strong></div>';
+        html += '<table class="data-table" style="margin-top:8px;"><thead><tr><th>Vendor</th><th>Status</th><th>Category</th><th>Reputation</th></tr></thead><tbody>';
+        providerResults.forEach(function (item) {
+            var status = String(item.status || 'unknown');
+            var statusHtml = '<span class="status-warn">' + escapeHtml(status) + '</span>';
+            if (status === 'checked') statusHtml = '<span class="status-up">checked</span>';
+            if (status === 'error') statusHtml = '<span class="status-down">error</span>';
+            if (status === 'not_run') statusHtml = '<span class="text-muted">not_run</span>';
+            html += '<tr>';
+            html += '<td>' + escapeHtml(item.service || item.vendor || 'vendor') + '</td>';
+            html += '<td>' + statusHtml + '</td>';
+            html += '<td>' + escapeHtml(item.category || '—') + '</td>';
+            html += '<td>' + escapeHtml(item.reputation || item.risk_level || item.security || '—') + '</td>';
+            html += '</tr>';
+        });
+        html += '</tbody></table>';
+    }
+
+    html += '<div style="margin-top:10px;"><strong>Threat Context</strong>';
+    html += '<div class="text-muted">VT: ' + escapeHtml(vt.status || 'n/a') + ' (malicious ' + (vt.malicious || 0) + ', suspicious ' + (vt.suspicious || 0) + ')';
+    html += ' | AbuseIPDB: ' + escapeHtml(abuse.status || 'n/a') + ' (score ' + (abuse.abuse_score || 0) + '%)';
+    html += ' | URLhaus: ' + escapeHtml(urlhaus.status || 'n/a');
+    html += '</div></div>';
+
+    if (cat.burned_signal) {
+        html += '<p class="status-down" style="margin-top:8px;">Burned signal detected: ' + escapeHtml((cat.burned_reasons || []).join('; ')) + '</p>';
+    }
+
+    if (details.length) {
+        html += '<table class="data-table" style="margin-top:10px;"><thead><tr><th>Source</th><th>Status</th><th>Summary</th></tr></thead><tbody>';
+        details.forEach(function (item) {
+            html += '<tr><td>' + escapeHtml(item.source || 'source') + '</td><td>' + escapeHtml(item.status || 'unknown') + '</td><td>' + escapeHtml(item.summary || '—') + '</td></tr>';
+        });
+        html += '</tbody></table>';
+    }
+
+    html += '</div>';
+    return html;
+}
+
+function searchDomains(btn) {
+    btn.disabled = true;
+    btn.textContent = 'Searching...';
+    var progressWrap = document.getElementById('search-progress-wrap');
+    var progressBar = document.getElementById('search-progress-bar');
+    var progressText = document.getElementById('search-progress-text');
+    progressWrap.style.display = 'block';
+    progressBar.style.width = '6%';
+    progressText.textContent = 'Searching candidates...';
+
+    var progress = 6;
+    var stage = 0;
+    var stageMsgs = [
+        'Searching candidates...',
+        'Checking availability (RDAP/WHOIS)...',
+        'Scoring trust signals...',
+        'Finalizing ranked results...'
+    ];
+    var progressTimer = setInterval(function () {
+        progress = Math.min(92, progress + 4);
+        progressBar.style.width = progress + '%';
+        if (progress > 25 && stage < 1) { stage = 1; progressText.textContent = stageMsgs[1]; }
+        if (progress > 55 && stage < 2) { stage = 2; progressText.textContent = stageMsgs[2]; }
+        if (progress > 78 && stage < 3) { stage = 3; progressText.textContent = stageMsgs[3]; }
+    }, 260);
+
+    var minScore = parseInt(document.getElementById('df-min-score').value, 10);
+    if (isNaN(minScore) || minScore < 0) { minScore = 0; }
+    if (minScore > 100) { minScore = 100; }
+
+    fetch('/api/domain-finder/search', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            keyword: document.getElementById('df-keyword').value,
+            category: document.getElementById('df-category').value,
+            tld: document.getElementById('df-tld').value,
+            min_backlinks: parseInt(document.getElementById('df-bl').value, 10) || 0,
+            min_age_years: parseInt(document.getElementById('df-age').value, 10) || 0,
+            max_results: parseInt(document.getElementById('df-max').value, 10) || 30,
+            human_readable_only: document.getElementById('df-readable').checked,
+            available_only: document.getElementById('df-available-only').checked
+        })
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+        var card = document.getElementById('results-card');
+        var container = document.getElementById('results-container');
+        var countEl = document.getElementById('results-count');
+        var results = data.results || [];
+        var warning = data.warning || '';
+
+        card.style.display = 'block';
+        if (!results.length || (results[0] && results[0].error)) {
+            var msg = (results[0] && results[0].message) || 'No results found.';
+            var msgHtml = '<div class="card-body">';
+            msgHtml += '<p class="text-muted">' + escapeHtml(msg) + '</p></div>';
+            container.innerHTML = msgHtml;
+            countEl.textContent = '0 domains';
+            return;
+        }
+
+        results = results.filter(function (r) {
+            return (r.score || 0) >= minScore;
+        });
+
+        countEl.textContent = results.length + ' domains';
+        if (!results.length) {
+            container.innerHTML = '<div class="card-body"><p class="text-muted">No domains met the selected minimum score.</p></div>';
+            return;
+        }
+
+        var html = '';
+        if (warning) {
+            html += '<div class="card-body" style="padding-bottom:0;"><p class="status-warn">' + escapeHtml(warning) + '</p></div>';
+        }
+        html += '<table class="data-table"><thead><tr>';
+        html += '<th>Domain</th><th>Score</th><th>Quality</th><th>Backlinks</th><th>Domain Pop</th><th>Age (yrs)</th><th>Actions</th>';
+        html += '</tr></thead><tbody>';
+
+        results.forEach(function (r) {
+            var score = r.score || 0;
+            var scoreCls = score >= 70 ? 'text-green' : (score >= 40 ? 'text-yellow' : 'text-red');
+            html += '<tr>';
+            html += '<td><strong>' + escapeHtml(r.domain) + '</strong></td>';
+            html += '<td><span class="' + scoreCls + '">' + score + '/100</span></td>';
+            html += '<td>' + qualityLabel(score) + '</td>';
+            html += '<td>' + (r.backlinks || 0) + '</td>';
+            html += '<td>' + (r.domain_pop || 0) + '</td>';
+            html += '<td>' + (r.archive_age || 0) + '</td>';
+            html += '<td><div class="action-btns">';
+            html += "<button class=\"btn btn-xs\" onclick=\"runDueDiligence('" + r.domain + "', true)\">Checks</button>";
+            html += "<button class=\"btn btn-xs\" onclick=\"addToTracking('" + r.domain + "')\">+ Track</button>";
+            html += '</div></td>';
+            html += '</tr>';
+        });
+
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    })
+    .catch(function () {
+        alert('Search failed. Check connection and try again.');
+    })
+    .finally(function () {
+        clearInterval(progressTimer);
+        progressBar.style.width = '100%';
+        progressText.textContent = 'Done';
+        setTimeout(function () {
+            progressWrap.style.display = 'none';
+            progressBar.style.width = '0%';
+            progressText.textContent = 'Searching domain intelligence sources...';
+        }, 500);
+        btn.disabled = false;
+        btn.textContent = 'Search';
+    });
+}
+
+function runDueDiligenceFromInput() {
+    var domain = normalizeDomain(document.getElementById('lookup-domain').value);
+    if (!domain) { alert('Enter a domain first.'); return; }
+    runDueDiligence(domain, false);
+}
+
+function runDueDiligence(domain, scrollToTop) {
+    var lookupDomain = normalizeDomain(domain);
+    document.getElementById('lookup-domain').value = lookupDomain;
+
+    var el = document.getElementById('lookup-result');
+    el.innerHTML = '<span class="loading">Running WHOIS, Wayback, VirusTotal, and categorization checks...</span>';
+
+    var lookupReq = fetch('/api/domain-finder/lookup/' + encodeURIComponent(lookupDomain)).then(function (r) { return r.json(); });
+    var catReq = fetch('/api/domain-finder/categorization/' + encodeURIComponent(lookupDomain)).then(function (r) { return r.json(); });
+
+    Promise.all([lookupReq, catReq]).then(function (payloads) {
+        var lookup = payloads[0] || {};
+        var categorization = payloads[1] || {};
+
+        var html = '';
+
+        var whois = lookup.whois || {};
+        html += '<div class="guide-section"><h3>WHOIS</h3><table class="data-table"><tbody>';
+        html += '<tr><td>Domain</td><td><strong>' + escapeHtml(whois.domain || lookupDomain) + '</strong></td></tr>';
+        html += '<tr><td>Created</td><td>' + escapeHtml(whois.creation_date || 'Unknown') + '</td></tr>';
+        html += '<tr><td>Expires</td><td>' + escapeHtml(whois.expiration_date || 'Unknown') + '</td></tr>';
+        html += '<tr><td>Age</td><td>' + (whois.age_days ? (whois.age_days + ' days (' + whois.age_years + ' years)') : 'Unknown') + '</td></tr>';
+        html += '<tr><td>Registrar</td><td>' + escapeHtml(whois.registrar || 'Unknown') + '</td></tr>';
+        html += '</tbody></table></div>';
+
+        var wayback = lookup.wayback || {};
+        html += '<div class="guide-section"><h3>Wayback</h3><table class="data-table"><tbody>';
+        html += '<tr><td>Snapshots Found</td><td>' + (wayback.has_snapshots ? '<span class="status-up">Yes</span>' : 'No') + '</td></tr>';
+        html += '<tr><td>First Snapshot</td><td>' + escapeHtml(wayback.first_snapshot_date || 'N/A') + '</td></tr>';
+        html += '<tr><td>Latest Snapshot</td><td>' + escapeHtml(wayback.last_snapshot_date || 'N/A') + '</td></tr>';
+        html += '<tr><td>Total Snapshots</td><td>' + escapeHtml(wayback.total_snapshots || 'N/A') + '</td></tr>';
+        if (wayback.closest_url) {
+            html += '<tr><td>View</td><td><a href="' + escapeHtml(wayback.closest_url) + '" target="_blank">Open in Wayback</a></td></tr>';
+        }
+        html += '</tbody></table></div>';
+
+        var vt = lookup.virustotal || {};
+        html += '<div class="guide-section"><h3>VirusTotal</h3>';
+        if (vt.status === 'checked') {
+            html += '<p>Reputation score: <strong>' + (vt.reputation_score || 0) + '</strong> | ';
+            html += 'Malicious: <strong>' + (vt.malicious || 0) + '</strong> | ';
+            html += 'Suspicious: <strong>' + (vt.suspicious || 0) + '</strong></p>';
+        } else if (vt.status) {
+            html += '<p class="text-muted">Status: ' + escapeHtml(vt.status) + (vt.message ? (' (' + escapeHtml(vt.message) + ')') : '') + '</p>';
+        } else {
+            html += '<p class="text-muted">VirusTotal key not configured in Settings.</p>';
+        }
+        html += '</div>';
+
+        html += renderCategorizationIntel(categorization);
+
+        el.innerHTML = html;
+        if (scrollToTop) {
+            var dd = document.getElementById('due-diligence-card');
+            if (dd && dd.scrollIntoView) {
+                dd.scrollIntoView({behavior: 'smooth', block: 'start'});
+            }
+        }
+    }).catch(function () {
+        el.innerHTML = '<span class="status-down">Due-diligence lookup failed.</span>';
+    });
+}
+
+function whoisLookup() {
+    var domain = normalizeDomain(document.getElementById('lookup-domain').value);
+    if (!domain) { alert('Enter a domain first.'); return; }
+    var el = document.getElementById('lookup-result');
+    el.innerHTML = '<span class="loading">Running WHOIS lookup...</span>';
+
+    fetch('/api/domain-finder/whois/' + encodeURIComponent(domain))
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            var html = '<div class="guide-section"><h3>WHOIS</h3><table class="data-table"><tbody>';
+            if (data.error) {
+                html += '<tr><td colspan="2" class="text-red">' + escapeHtml(data.error) + '</td></tr>';
+            } else {
+                html += '<tr><td>Domain</td><td><strong>' + escapeHtml(data.domain || domain) + '</strong></td></tr>';
+                html += '<tr><td>Created</td><td>' + escapeHtml(data.creation_date || 'Unknown') + '</td></tr>';
+                html += '<tr><td>Expires</td><td>' + escapeHtml(data.expiration_date || 'Unknown') + '</td></tr>';
+                html += '<tr><td>Age</td><td>' + (data.age_days ? (data.age_days + ' days (' + data.age_years + ' years)') : 'Unknown') + '</td></tr>';
+                html += '<tr><td>Registrar</td><td>' + escapeHtml(data.registrar || 'Unknown') + '</td></tr>';
+            }
+            html += '</tbody></table></div>';
+            el.innerHTML = html;
+        })
+        .catch(function () {
+            el.innerHTML = '<span class="status-down">WHOIS lookup failed.</span>';
+        });
+}
+
+function waybackLookup() {
+    var domain = normalizeDomain(document.getElementById('lookup-domain').value);
+    if (!domain) { alert('Enter a domain first.'); return; }
+    var el = document.getElementById('lookup-result');
+    el.innerHTML = '<span class="loading">Checking Wayback snapshots...</span>';
+
+    fetch('/api/domain-finder/wayback/' + encodeURIComponent(domain))
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            var html = '<div class="guide-section"><h3>Wayback</h3><table class="data-table"><tbody>';
+            if (data.error) {
+                html += '<tr><td colspan="2" class="text-red">' + escapeHtml(data.error) + '</td></tr>';
+            } else {
+                html += '<tr><td>Snapshots Found</td><td>' + (data.has_snapshots ? '<span class="status-up">Yes</span>' : 'No') + '</td></tr>';
+                html += '<tr><td>First Snapshot</td><td>' + escapeHtml(data.first_snapshot_date || 'N/A') + '</td></tr>';
+                html += '<tr><td>Latest Snapshot</td><td>' + escapeHtml(data.last_snapshot_date || 'N/A') + '</td></tr>';
+                html += '<tr><td>Total Snapshots</td><td>' + escapeHtml(data.total_snapshots || 'N/A') + '</td></tr>';
+                if (data.closest_url) {
+                    html += '<tr><td>View</td><td><a href="' + escapeHtml(data.closest_url) + '" target="_blank">Open in Wayback</a></td></tr>';
+                }
+            }
+            html += '</tbody></table></div>';
+            el.innerHTML = html;
+        })
+        .catch(function () {
+            el.innerHTML = '<span class="status-down">Wayback check failed.</span>';
+        });
+}
+
+function virusTotalLookup() {
+    var domain = normalizeDomain(document.getElementById('lookup-domain').value);
+    if (!domain) { alert('Enter a domain first.'); return; }
+    var el = document.getElementById('lookup-result');
+    el.innerHTML = '<span class="loading">Checking VirusTotal...</span>';
+
+    fetch('/api/domain-finder/virustotal/' + encodeURIComponent(domain))
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            var html = '<div class="guide-section"><h3>VirusTotal</h3>';
+            if (data.error) {
+                html += '<p class="text-red">' + escapeHtml(data.error) + '</p>';
+            } else if (data.status === 'checked') {
+                html += '<table class="data-table"><tbody>';
+                html += '<tr><td>Reputation Score</td><td>' + (data.reputation_score || 0) + '</td></tr>';
+                html += '<tr><td>Malicious</td><td>' + (data.malicious || 0) + '</td></tr>';
+                html += '<tr><td>Suspicious</td><td>' + (data.suspicious || 0) + '</td></tr>';
+                html += '<tr><td>Clean</td><td>' + (data.clean || 0) + '</td></tr>';
+                html += '</tbody></table>';
+            } else {
+                html += '<p class="text-muted">Status: ' + escapeHtml(data.status || 'unknown') + (data.message ? (' (' + escapeHtml(data.message) + ')') : '') + '</p>';
+            }
+            html += '</div>';
+            el.innerHTML = html;
+        })
+        .catch(function () {
+            el.innerHTML = '<span class="status-down">VirusTotal lookup failed.</span>';
+        });
+}
+
+function runCategorizationFromInput() {
+    var domain = normalizeDomain(document.getElementById('lookup-domain').value);
+    if (!domain) { alert('Enter a domain first.'); return; }
+    runCategorization(domain);
+}
+
+function runCategorization(domain) {
+    var el = document.getElementById('lookup-result');
+    el.innerHTML = '<span class="loading">Running categorization checks...</span>';
+
+    fetch('/api/domain-finder/categorization/' + encodeURIComponent(domain))
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            el.innerHTML = renderCategorizationIntel(data);
+        })
+        .catch(function () {
+            el.innerHTML = '<span class="status-down">Categorization checks failed.</span>';
+        });
+}
+
+function addToTracking(domain) {
+    var category = document.getElementById('df-category').value || '';
+    fetch('/api/domain/add', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            name: domain,
+            category: category,
+            status: 'generated',
+            notes: 'Added from Domain Finder'
+        })
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+        if (data.success) {
+            alert('Added ' + domain + ' to tracking.');
+        } else {
+            alert(data.error || 'Failed to add domain.');
+        }
+    })
+    .catch(function () {
+        alert('Failed to add domain.');
+    });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}Warden — {{ domain.name }} Generated{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <a href="{{ url_for('generate') }}" class="breadcrumb">&larr; Generate</a>
+        <h1>{{ domain.name }} — Site Ready</h1>
+    </div>
+    <a href="{{ url_for('generate') }}" class="btn">Generate Another</a>
+</div>
+
+<!-- Preview -->
+<div class="card">
+    <div class="card-header">
+        <h2>Preview Site</h2>
+        <a href="{{ url_for('preview_file', domain_name=domain.name, filepath='index.html') }}" target="_blank" class="btn btn-primary btn-sm">Open Full Preview</a>
+    </div>
+    <div class="card-body">
+        <div class="preview-links">
+            {% for f in files %}
+            {% if f.path.endswith('.html') %}
+            <a href="{{ url_for('preview_file', domain_name=domain.name, filepath=f.path) }}" target="_blank" class="btn btn-sm">{{ f.path }}</a>
+            {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Generated Files -->
+<div class="card">
+    <div class="card-header">
+        <h2>Generated Files</h2>
+        <span class="badge badge-category">{{ files | length }} files</span>
+    </div>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>File</th>
+                <th>Size</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for f in files %}
+            <tr>
+                <td><code>{{ f.path }}</code></td>
+                <td class="text-muted">{{ "%.1f" | format(f.size / 1024) }} KB</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <div class="card-body">
+        <div class="code-block">
+            <strong>Files location:</strong><br>
+            {{ output_path }}/
+        </div>
+    </div>
+</div>
+
+<!-- Deployment Instructions -->
+<div class="card">
+    <div class="card-header"><h2>Deploy to GitHub Pages</h2></div>
+    <div class="card-body">
+
+        <div class="guide-section">
+            <h3>Step 1: Create a GitHub repository</h3>
+            <p>Go to GitHub and create a <strong>new public repository</strong> named <code>{{ repo_name }}</code>. Don't initialize with README.</p>
+            <p>Or use the CLI:</p>
+            <div class="code-block">gh repo create {{ repo_name }} --public --description "{{ domain.get('companyName', domain.category) }}"</div>
+        </div>
+
+        <div class="guide-section">
+            <h3>Step 2: Push the generated files</h3>
+            <div class="code-block">cd {{ output_path }}<br>git init<br>git add -A<br>git commit -m "Initial site deployment"<br>git branch -M main<br>git remote add origin git@github.com:YOUR_USERNAME/{{ repo_name }}.git<br>git push -u origin main</div>
+            <p class="text-muted" style="margin-top: 8px;">Replace <code>YOUR_USERNAME</code> with your GitHub username or org.</p>
+        </div>
+
+        <div class="guide-section">
+            <h3>Step 3: Enable GitHub Pages</h3>
+            <p>In the repo settings:</p>
+            <ul class="checklist">
+                <li>Go to <strong>Settings &rarr; Pages</strong></li>
+                <li>Under "Source", select <strong>Deploy from a branch</strong></li>
+                <li>Select <strong>main</strong> branch, <strong>/ (root)</strong></li>
+                <li>Click Save</li>
+            </ul>
+            <p>Or use the CLI:</p>
+            <div class="code-block">gh api -X PUT repos/YOUR_USERNAME/{{ repo_name }}/pages -f "source[branch]=main" -f "source[path]=/"</div>
+        </div>
+
+        <div class="guide-section">
+            <h3>Step 4: Configure DNS</h3>
+            <p>At your domain registrar, add these DNS records for <code>{{ domain.name }}</code>:</p>
+            <table class="data-table" style="margin: 12px 0;">
+                <thead><tr><th>Type</th><th>Name</th><th>Value</th></tr></thead>
+                <tbody>
+                    <tr><td>A</td><td>@</td><td>185.199.108.153</td></tr>
+                    <tr><td>A</td><td>@</td><td>185.199.109.153</td></tr>
+                    <tr><td>A</td><td>@</td><td>185.199.110.153</td></tr>
+                    <tr><td>A</td><td>@</td><td>185.199.111.153</td></tr>
+                    <tr><td>CNAME</td><td>www</td><td>YOUR_USERNAME.github.io</td></tr>
+                </tbody>
+            </table>
+            <p class="text-muted">DNS propagation takes 5 min to 48 hours. GitHub auto-provisions SSL after DNS resolves.</p>
+        </div>
+
+        <div class="guide-section">
+            <h3>Step 5: Verify &amp; submit for categorization</h3>
+            <p>Once the site is live at <code>https://{{ domain.name }}</code>, submit it to web filter services:</p>
+            <div class="services-grid" style="margin-top: 12px;">
+                {% for svc in services %}
+                <div class="service-card">
+                    <h3>{{ svc.name }}</h3>
+                    <a href="{{ svc.submit_url }}" target="_blank" class="btn btn-xs">Submit</a>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="guide-section">
+            <h3>Step 6: Update status in the portal</h3>
+            <p>Come back here and update the domain status as you progress:</p>
+            <p>
+                <code>generated</code> &rarr; <code>deployed</code> &rarr; <code>submitted</code> &rarr; <code>categorized</code> &rarr; <code>aging</code> &rarr; <code>active</code>
+            </p>
+            <a href="{{ url_for('domain_detail', domain_name=domain.name) }}" class="btn btn-primary btn-sm" style="margin-top: 8px;">Go to Domain Detail</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

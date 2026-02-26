@@ -1,0 +1,94 @@
+name: Content Refresh
+
+on:
+  schedule:
+    - cron: '0 3 * * 0'  # Weekly on Sundays at 3:00 AM UTC
+  workflow_dispatch:       # Allow manual trigger
+
+jobs:
+  refresh-content:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Refresh domain content
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "## Content Refresh - $(date -u '+%Y-%m-%d %H:%M UTC')" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          UPDATED=0
+
+          for row in $(jq -r '.domains[] | select(.status != "burned" and .status != "retired") | @base64' domains.json); do
+            _jq() {
+              echo "$row" | base64 --decode | jq -r "${1}"
+            }
+
+            DOMAIN=$(_jq '.name')
+            REPO=$(_jq '.repo')
+            CATEGORY=$(_jq '.category')
+
+            echo "Processing $DOMAIN ($REPO)..."
+
+            # Clone the domain repo
+            TMPDIR=$(mktemp -d)
+            if ! gh repo clone "$REPO" "$TMPDIR/repo" -- -q 2>/dev/null; then
+              echo "  Failed to clone $REPO, skipping"
+              rm -rf "$TMPDIR"
+              continue
+            fi
+
+            cd "$TMPDIR/repo"
+
+            # Generate a minor content update
+            TIMESTAMP=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+            YEAR=$(date +%Y)
+            WEEK=$(date +%U)
+
+            # Update a meta tag timestamp in index.html if it exists
+            if [[ -f index.html ]]; then
+              # Add/update a last-modified meta comment
+              if grep -q '<!-- last-updated:' index.html; then
+                sed -i "s/<!-- last-updated: .* -->/<!-- last-updated: $TIMESTAMP -->/" index.html
+              else
+                sed -i "s/<head>/<head>\n<!-- last-updated: $TIMESTAMP -->/" index.html
+              fi
+            fi
+
+            # Update copyright year in footer if present
+            if [[ -f index.html ]]; then
+              sed -i "s/© [0-9]\{4\}/© $YEAR/g" index.html
+            fi
+
+            # Check if there are actual changes
+            if git diff --quiet; then
+              echo "  No changes for $DOMAIN"
+              rm -rf "$TMPDIR"
+              cd "$GITHUB_WORKSPACE"
+              continue
+            fi
+
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add -A
+            git commit -m "Content refresh: week $WEEK update"
+            git push -q
+
+            UPDATED=$((UPDATED + 1))
+            echo "  Updated $DOMAIN"
+            echo "- **$DOMAIN** ($REPO): refreshed" >> "$GITHUB_STEP_SUMMARY"
+
+            rm -rf "$TMPDIR"
+            cd "$GITHUB_WORKSPACE"
+          done
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**$UPDATED domain(s) updated.**" >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ $UPDATED -eq 0 ]]; then
+            echo "_No domains needed updates._" >> "$GITHUB_STEP_SUMMARY"
+          fi

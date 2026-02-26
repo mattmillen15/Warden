@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+{% block title %}Warden — Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Dashboard</h1>
+    <a href="{{ url_for('onboard') }}" class="btn btn-primary">+ Onboard Domain</a>
+</div>
+
+<div class="stats-row">
+    <div class="stat-card">
+        <div class="stat-number">{{ stats.total }}</div>
+        <div class="stat-label">Total Domains</div>
+    </div>
+    <div class="stat-card stat-blue">
+        <div class="stat-number">{{ stats.deployed }}</div>
+        <div class="stat-label">Deployed</div>
+    </div>
+    <div class="stat-card stat-yellow">
+        <div class="stat-number">{{ stats.aging }}</div>
+        <div class="stat-label">Aging</div>
+    </div>
+    <div class="stat-card stat-green">
+        <div class="stat-number">{{ stats.active }}</div>
+        <div class="stat-label">Active</div>
+    </div>
+    <div class="stat-card stat-red">
+        <div class="stat-number">{{ stats.burned }}</div>
+        <div class="stat-label">Burned</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>Domains</h2>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="btn btn-sm" onclick="recoverGitHubDomains(this)">Recover from GitHub</button>
+            <button class="btn btn-sm" onclick="document.getElementById('add-modal').style.display='flex'">+ Add Manually</button>
+        </div>
+    </div>
+    {% if domains %}
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Domain</th>
+                <th>Category (via Talos)</th>
+                <th>Status</th>
+                <th>Age (days)</th>
+                <th>Notes</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for d in domains %}
+            <tr>
+                <td>
+                    <a href="{{ url_for('domain_detail', domain_name=d.name) }}" class="domain-link">{{ d.name }}</a>
+                </td>
+                <td><span class="badge badge-category">{{ d.category_talos or d.category or 'Unknown' }}</span></td>
+                <td>
+                    <span class="badge badge-{{ d.status }}">{{ d.status }}</span>
+                </td>
+                <td>
+                    <span class="{% if d.age_days >= 60 %}text-green{% elif d.age_days >= 30 %}text-yellow{% else %}text-red{% endif %}">
+                        {{ d.age_days }}
+                    </span>
+                </td>
+                <td class="notes-cell">{{ d.notes or '—' }}</td>
+                <td>
+                    <div class="action-btns">
+                        <button class="btn btn-xs" onclick="checkHealth('{{ d.name }}', this)">Health</button>
+                        <a href="{{ url_for('domain_detail', domain_name=d.name) }}" class="btn btn-xs">Details</a>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+        <p>No domains tracked yet.</p>
+        <a href="{{ url_for('onboard') }}" class="btn btn-primary">Onboard Your First Domain</a>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Add Domain Modal -->
+<div id="add-modal" class="modal" style="display:none">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Add Domain to Tracking</h3>
+            <button class="modal-close" onclick="this.closest('.modal').style.display='none'">&times;</button>
+        </div>
+        <form id="add-domain-form" onsubmit="addDomain(event)">
+            <div class="form-group">
+                <label>Domain Name</label>
+                <input type="text" id="add-domain" placeholder="example.com" required>
+            </div>
+            <div class="form-group">
+                <label>Category</label>
+                <select id="add-category">
+                    {% for cat in categories %}
+                    <option value="{{ cat }}">{{ cat | replace('_', ' ') | title }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Purchase Date</label>
+                <input type="date" id="add-date" value="{{ now }}">
+            </div>
+            <div class="form-group">
+                <label>Status</label>
+                <select id="add-status">
+                    <option value="deployed">Deployed</option>
+                    <option value="aging">Aging</option>
+                    <option value="active">Active</option>
+                    <option value="burned">Burned</option>
+                    <option value="retired">Retired</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Notes</label>
+                <textarea id="add-notes" rows="2" placeholder="Optional notes..."></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary btn-full">Add Domain</button>
+        </form>
+    </div>
+</div>
+
+<script>
+function recoverGitHubDomains(btn) {
+    if (!confirm('Recover deployed domains from your configured GitHub account?')) {
+        return;
+    }
+    var original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Recovering...';
+    fetch('/api/domains/recover/github', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({})
+    })
+    .then(async function (r) {
+        var data = await r.json();
+        return {ok: r.ok, data: data};
+    })
+    .then(function (res) {
+        if (!res.ok) {
+            alert(res.data.error || 'Recovery failed');
+            return;
+        }
+        alert(
+            'Recovered ' + res.data.total_recovered + ' domains\\n' +
+            'Added: ' + res.data.added + ' | Updated: ' + res.data.updated
+        );
+        location.reload();
+    })
+    .catch(function () {
+        alert('Recovery failed due to a network or API error.');
+    })
+    .finally(function () {
+        btn.disabled = false;
+        btn.textContent = original;
+    });
+}
+
+function checkHealth(domain, btn) {
+    btn.textContent = '...';
+    btn.disabled = true;
+    fetch('/api/health-check/' + domain)
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'up') {
+                btn.textContent = data.code;
+                btn.classList.add('btn-success');
+            } else if (data.status === 'up_no_ssl') {
+                btn.textContent = data.code + ' (no SSL)';
+                btn.classList.add('btn-warning');
+            } else {
+                btn.textContent = 'Down';
+                btn.classList.add('btn-danger');
+            }
+        })
+        .catch(() => {
+            btn.textContent = 'Error';
+            btn.classList.add('btn-danger');
+        });
+}
+
+function addDomain(e) {
+    e.preventDefault();
+    var payload = {
+        name: document.getElementById('add-domain').value,
+        category: document.getElementById('add-category').value,
+        purchaseDate: document.getElementById('add-date').value,
+        status: document.getElementById('add-status').value,
+        notes: document.getElementById('add-notes').value,
+    };
+    fetch('/api/domain/add', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload),
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert(data.error || 'Failed to add domain');
+        }
+    });
+}
+</script>
+{% endblock %}

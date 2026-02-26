@@ -1,0 +1,38 @@
+<div class="card">
+    <div class="card-header"><h2>Template Gallery</h2></div>
+    <div class="card-body">
+        <div class="template-gallery-grid">
+            {% for cat in categories %}
+            <article class="template-preview-card">
+                <div class="template-header template-{{ cat }}">{{ cat | replace('_', ' ') | title }}</div>
+                <div class="template-mini-wrap">
+                    <iframe
+                        loading="lazy"
+                        sandbox="allow-same-origin allow-scripts"
+                        title="{{ cat }} demo"
+                        src="{{ url_for('template_demo', category=cat) }}"
+                    ></iframe>
+                </div>
+                <div class="template-body">
+                    <strong>{{ cat | replace('_', ' ') | title }}</strong>
+                    <p class="text-muted template-desc">
+                        {% if cat == 'technology' %}Managed services and technology operations layout with strong trust/CTA blocks.{% endif %}
+                        {% if cat == 'consulting' %}Professional advisory layout with service highlights, credibility sections, and consultation flow.{% endif %}
+                        {% if cat == 'finance' %}Financial advisory layout with credibility sections, services, and inquiry flow.{% endif %}
+                        {% if cat == 'healthcare' %}Healthcare practice layout with services, provider info, and appointment request flow.{% endif %}
+                        {% if cat == 'education' %}Program-focused layout for training, resources, and enrollment/contact actions.{% endif %}
+                        {% if cat == 'news' %}Publishing/news layout for headlines, story lists, and reader engagement.{% endif %}
+                        {% if cat == 'marketing' %}Agency/marketing layout with campaign services, outcomes, and consultation CTA.{% endif %}
+                        {% if cat == 'ecommerce' %}Storefront-style layout with collections, conversion blocks, and customer support contact.{% endif %}
+                        {% if cat == 'travel' %}Resort/travel layout with package sections, destination highlights, and booking inquiry flow.{% endif %}
+                    </p>
+                    <div class="action-btns">
+                        <a class="btn btn-xs" href="{{ url_for('template_demo', category=cat) }}" target="_blank">Open Demo</a>
+                        <button type="button" class="btn btn-xs" onclick="selectTemplate('{{ cat }}')">Use Template</button>
+                    </div>
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+    </div>
+</div>

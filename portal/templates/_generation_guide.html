@@ -1,0 +1,25 @@
+<div class="card">
+    <div class="card-header"><h2>How This Works</h2></div>
+    <div class="card-body">
+        <div class="guide-section">
+            <h3>1. Generate</h3>
+            <p>Pick a domain and template. Files are generated locally in <code>output/</code> with placeholders replaced.</p>
+        </div>
+        <div class="guide-section">
+            <h3>2. Review</h3>
+            <p>Preview the generated site right in the portal. Confirm layout, links, and content before deployment.</p>
+        </div>
+        <div class="guide-section">
+            <h3>3. Deploy</h3>
+            {% if auto_push %}
+            <p>GitHub auto-push is enabled. A repo push and Pages configuration are attempted automatically after generation.</p>
+            {% else %}
+            <p>GitHub auto-push is disabled. Generate locally, review, then push when you are ready.</p>
+            {% endif %}
+        </div>
+        <div class="guide-section">
+            <h3>4. Verify Reputation</h3>
+            <p>Use Reputation Check and Domain Finder to validate WHOIS history, reputation feeds, and categorization health.</p>
+        </div>
+    </div>
+</div>

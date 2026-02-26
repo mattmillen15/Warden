@@ -1,0 +1,453 @@
+{% extends "base.html" %}
+{% block title %}Warden — Reputation Check{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Reputation Check</h1>
+</div>
+
+<div class="card">
+    <div class="card-header"><h2>Auto Monitoring</h2></div>
+    <div class="card-body">
+        <div class="detail-grid" style="grid-template-columns: 1.4fr 1fr;">
+            <div>
+                <p class="card-desc">Configure recurring full scans to keep health and reputation status fresh.</p>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="monitor-enabled" {% if monitor_enabled %}checked{% endif %} style="width:auto; margin-right:8px;">
+                        Enable auto monitoring
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label for="monitor-frequency">Scan Frequency</label>
+                    <select id="monitor-frequency">
+                        {% for value, label in monitor_options.items() %}
+                        <option value="{{ value }}" {% if monitor_frequency == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="action-btns">
+                    <button class="btn btn-primary" onclick="saveMonitorConfig(this)">Save Monitoring</button>
+                    <button class="btn" onclick="triggerManualScan(this)">Run Full Scan Now</button>
+                </div>
+            </div>
+            <div>
+                <div class="info-row">
+                    <span class="info-label">Status</span>
+                    <span class="info-value" id="monitor-status">Loading...</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Last Full Scan</span>
+                    <span class="info-value" id="monitor-last-run">—</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Next Scheduled</span>
+                    <span class="info-value" id="monitor-next">—</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>Domain Health Status</h2>
+        <button class="btn btn-primary btn-sm" onclick="checkAllDomains(this)">Check All Health</button>
+    </div>
+    {% if domains %}
+    <table class="data-table" id="health-table">
+        <thead>
+            <tr>
+                <th>Domain</th>
+                <th>Category</th>
+                <th>Status</th>
+                <th>HTTP</th>
+                <th>DNS</th>
+                <th>SPF</th>
+                <th>DKIM</th>
+                <th>DMARC</th>
+                <th>Last Health Scan</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for d in domains %}
+            <tr data-domain="{{ d.name }}">
+                <td><a href="{{ url_for('domain_detail', domain_name=d.name) }}">{{ d.name }}</a></td>
+                <td><span class="badge badge-category">{{ d.category }}</span></td>
+                <td><span class="badge badge-{{ d.status }}">{{ d.status }}</span></td>
+                <td class="check-http">
+                    {% if d.last_health == 'up' %}<span class="status-up">{{ d.last_health_code or 'Up' }}</span>
+                    {% elif d.last_health == 'up_no_ssl' %}<span class="status-warn">{{ d.last_health_code or 'No SSL' }}</span>
+                    {% elif d.last_health == 'down' %}<span class="status-down">Down</span>
+                    {% else %}—{% endif %}
+                </td>
+                <td class="check-dns">
+                    {% if d.has_dns %}<span class="status-up">OK</span>{% elif d.has_dns == false %}<span class="status-down">None</span>{% else %}—{% endif %}
+                </td>
+                <td class="check-spf">
+                    {% if d.has_spf %}<span class="status-up">Yes</span>{% elif d.has_spf == false %}<span class="status-down">No</span>{% else %}—{% endif %}
+                </td>
+                <td class="check-dkim">
+                    {% if d.has_dkim %}<span class="status-up">Yes</span>{% elif d.has_dkim == false %}<span class="status-warn">No</span>{% else %}—{% endif %}
+                </td>
+                <td class="check-dmarc">
+                    {% if d.has_dmarc %}<span class="status-up">Yes</span>{% elif d.has_dmarc == false %}<span class="status-down">No</span>{% else %}—{% endif %}
+                </td>
+                <td class="check-health-time">{% if d.last_health_scan %}<small class="text-muted">{{ d.last_health_scan[:16] }}</small>{% else %}—{% endif %}</td>
+                <td><button class="btn btn-xs" onclick="checkSingleDomain('{{ d.name }}', this.closest('tr'), this)">Scan</button></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+        <p>No domains to check. <a href="{{ url_for('generate') }}">Generate a site first.</a></p>
+    </div>
+    {% endif %}
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>Reputation Scan</h2>
+        <button class="btn btn-primary btn-sm" onclick="scanAllReputation(this)" {% if not has_vt and not has_abuseipdb %}disabled title="Configure API keys in Settings first"{% endif %}>Scan All Reputation</button>
+    </div>
+    {% if domains %}
+    <div class="card-body">
+        <p class="card-desc">Checks VirusTotal, AbuseIPDB, and URLhaus via API. Results are persisted and shown with last scan times.</p>
+    </div>
+    <table class="data-table" id="reputation-table">
+        <thead>
+            <tr>
+                <th>Domain</th>
+                <th>VirusTotal</th>
+                <th>AbuseIPDB</th>
+                <th>URLhaus</th>
+                <th>Last Reputation Scan</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for d in domains %}
+            <tr data-domain="{{ d.name }}">
+                <td><a href="{{ url_for('domain_detail', domain_name=d.name) }}">{{ d.name }}</a></td>
+                <td class="rep-vt">
+                    {% if d.vt_status == 'checked' %}
+                        {% if d.vt_malicious and d.vt_malicious > 0 %}<span class="status-down">{{ d.vt_malicious }} malicious</span>
+                        {% else %}<span class="status-up">Clean</span>{% endif %}
+                    {% elif d.vt_status == 'rate_limited' %}<span class="status-warn">Rate limited</span>
+                    {% elif d.vt_status == 'not_configured' %}<span class="status-warn">No key</span>
+                    {% else %}—{% endif %}
+                </td>
+                <td class="rep-abuseipdb">
+                    {% if d.abuse_status == 'checked' %}
+                        {% if d.abuse_score and d.abuse_score > 50 %}<span class="status-down">Score: {{ d.abuse_score }}%</span>
+                        {% elif d.abuse_score and d.abuse_score > 0 %}<span class="status-warn">Score: {{ d.abuse_score }}%</span>
+                        {% else %}<span class="status-up">Clean (0%)</span>{% endif %}
+                    {% elif d.abuse_status == 'not_configured' %}<span class="status-warn">No key</span>
+                    {% else %}—{% endif %}
+                </td>
+                <td class="rep-urlhaus">
+                    {% if d.urlhaus_status == 'clean' %}<span class="status-up">Clean</span>
+                    {% elif d.urlhaus_status == 'flagged' %}<span class="status-down">Flagged</span>
+                    {% else %}—{% endif %}
+                </td>
+                <td class="rep-time">{% if d.last_rep_scan %}<small class="text-muted">{{ d.last_rep_scan[:16] }}</small>{% else %}—{% endif %}</td>
+                <td><button class="btn btn-xs" onclick="scanSingleDomain('{{ d.name }}', this.closest('tr'), this)">Scan</button></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state"><p>No domains tracked.</p></div>
+    {% endif %}
+</div>
+
+<div class="card">
+    <div class="card-header"><h2>Categorization</h2></div>
+    <div class="card-body">
+        <p class="card-desc">Scan provider-side web categorization status for a selected domain. Automatic submission is currently disabled.</p>
+        <div class="detail-grid" style="grid-template-columns: 1.2fr 1fr; margin-bottom: 14px;">
+            <div>
+                <div class="form-group">
+                    <label for="cat-domain">Domain</label>
+                    <select id="cat-domain" onchange="loadCategorizationSnapshot()">
+                        {% for d in domains %}
+                        <option value="{{ d.name }}">{{ d.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="action-btns">
+                    <button class="btn btn-primary" onclick="scanCategorizationProviders(this)">Scan Providers</button>
+                </div>
+            </div>
+            <div>
+                <div class="info-row">
+                    <span class="info-label">Last Provider Scan</span>
+                    <span class="info-value" id="cat-last-scan">—</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Provider Summary</span>
+                    <span class="info-value" id="cat-summary">—</span>
+                </div>
+            </div>
+        </div>
+
+        <div id="cat-results" style="margin-bottom: 12px;"></div>
+        <h3 style="margin-top: 10px;">Manual Provider Links</h3>
+        <div class="services-grid">
+            {% for svc in services %}
+            <div class="service-card">
+                <h3>{{ svc.name }}</h3>
+                <div class="service-links">
+                    {% if svc.check_url %}
+                    <a href="{{ svc.check_url }}" target="_blank" class="btn btn-xs">Check</a>
+                    {% endif %}
+                    {% if svc.submit_url %}
+                    <a href="{{ svc.submit_url }}" target="_blank" class="btn btn-xs">Submit</a>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<script>
+function fmtTime(iso) {
+    if (!iso) return '—';
+    try { return new Date(iso).toLocaleString(); } catch (_) { return iso; }
+}
+
+function saveMonitorConfig(btn) {
+    var payload = {
+        enabled: document.getElementById('monitor-enabled').checked,
+        frequency: document.getElementById('monitor-frequency').value
+    };
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+    fetch('/api/monitor/config', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (!data.success) {
+            alert(data.error || 'Failed to save monitoring settings.');
+            return;
+        }
+        loadMonitorStatus();
+    })
+    .catch(function() { alert('Failed to save monitoring settings.'); })
+    .finally(function() {
+        btn.disabled = false;
+        btn.textContent = 'Save Monitoring';
+    });
+}
+
+function loadMonitorStatus() {
+    fetch('/api/monitor/status')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            document.getElementById('monitor-status').innerHTML = data.running ? '<span class="status-up">Enabled</span>' : '<span class="status-warn">Disabled</span>';
+            document.getElementById('monitor-last-run').textContent = fmtTime(data.last_run && data.last_run.all_checks);
+            document.getElementById('monitor-next').textContent = fmtTime(data.next_run);
+            if (data.frequency) {
+                document.getElementById('monitor-frequency').value = data.frequency;
+            }
+        })
+        .catch(function() {
+            document.getElementById('monitor-status').innerHTML = '<span class="status-down">Unknown</span>';
+        });
+}
+
+function triggerManualScan(btn) {
+    btn.disabled = true;
+    btn.textContent = 'Scanning...';
+    fetch('/api/monitor/run', {method: 'POST'})
+        .then(function(r) { return r.json(); })
+        .then(function() {
+            loadMonitorStatus();
+            checkAllDomains();
+            scanAllReputation();
+        })
+        .catch(function() { alert('Manual scan failed.'); })
+        .finally(function() {
+            btn.disabled = false;
+            btn.textContent = 'Run Full Scan Now';
+        });
+}
+
+function renderHealthRow(row, snapshot) {
+    row.querySelector('.check-http').innerHTML = (snapshot.http_status === 'up')
+        ? '<span class="status-up">' + (snapshot.http_code || 'Up') + '</span>'
+        : (snapshot.http_status === 'up_no_ssl')
+            ? '<span class="status-warn">' + (snapshot.http_code || 'No SSL') + '</span>'
+            : '<span class="status-down">Down</span>';
+    row.querySelector('.check-dns').innerHTML = snapshot.has_dns ? '<span class="status-up">OK</span>' : '<span class="status-down">None</span>';
+    row.querySelector('.check-spf').innerHTML = snapshot.has_spf ? '<span class="status-up">Yes</span>' : '<span class="status-down">No</span>';
+    row.querySelector('.check-dkim').innerHTML = snapshot.has_dkim ? '<span class="status-up">Yes</span>' : '<span class="status-warn">No</span>';
+    row.querySelector('.check-dmarc').innerHTML = snapshot.has_dmarc ? '<span class="status-up">Yes</span>' : '<span class="status-down">No</span>';
+    row.querySelector('.check-health-time').innerHTML = '<small class="text-muted">' + fmtTime(snapshot.scanned_at) + '</small>';
+}
+
+function checkSingleDomain(domain, row, btn) {
+    if (btn) { btn.disabled = true; btn.textContent = '...'; }
+    fetch('/api/scan/health/' + encodeURIComponent(domain), {method: 'POST'})
+        .then(function(r) { return r.json(); })
+        .then(function(data) { renderHealthRow(row, data); })
+        .catch(function() { alert('Health scan failed for ' + domain); })
+        .finally(function() { if (btn) { btn.disabled = false; btn.textContent = 'Scan'; } });
+}
+
+function checkAllDomains(btn) {
+    if (btn) { btn.disabled = true; btn.textContent = 'Scanning...'; }
+    var rows = document.querySelectorAll('#health-table tbody tr');
+    rows.forEach(function(row, idx) {
+        var domain = row.getAttribute('data-domain');
+        setTimeout(function() { checkSingleDomain(domain, row); }, idx * 700);
+    });
+    if (btn) {
+        setTimeout(function() { btn.disabled = false; btn.textContent = 'Check All Health'; }, (rows.length * 700) + 1000);
+    }
+}
+
+function renderVtResult(r) {
+    if (!r || !r.status) return '—';
+    if (r.status === 'checked') {
+        if ((r.malicious || 0) > 0) return '<span class="status-down">' + r.malicious + ' malicious</span>';
+        if ((r.suspicious || 0) > 0) return '<span class="status-warn">' + r.suspicious + ' suspicious</span>';
+        return '<span class="status-up">Clean</span>';
+    }
+    if (r.status === 'not_configured') return '<span class="status-warn">No key</span>';
+    if (r.status === 'rate_limited') return '<span class="status-warn">Rate limited</span>';
+    if (r.status === 'not_found') return '<span class="status-warn">Unknown</span>';
+    if (r.status === 'error') return '<span class="status-down">Error</span>';
+    return '<span class="status-warn">' + r.status + '</span>';
+}
+
+function renderAbuseResult(r) {
+    if (!r || !r.status) return '—';
+    if (r.status === 'checked') {
+        var score = r.abuse_score || 0;
+        if (score > 50) return '<span class="status-down">Score: ' + score + '%</span>';
+        if (score > 0) return '<span class="status-warn">Score: ' + score + '%</span>';
+        return '<span class="status-up">Clean (0%)</span>';
+    }
+    if (r.status === 'not_configured') return '<span class="status-warn">No key</span>';
+    if (r.status === 'dns_failed') return '<span class="status-warn">No DNS</span>';
+    if (r.status === 'rate_limited') return '<span class="status-warn">Rate limited</span>';
+    return '<span class="status-down">Error</span>';
+}
+
+function renderUrlhausResult(r) {
+    if (!r || !r.status) return '—';
+    if (r.status === 'clean') return '<span class="status-up">Clean</span>';
+    if (r.status === 'flagged') return '<span class="status-down">Flagged</span>';
+    if (r.status === 'error') return '<span class="status-down">Error</span>';
+    return '<span class="status-warn">' + r.status + '</span>';
+}
+
+function scanSingleDomain(domain, row, btn) {
+    if (btn) { btn.disabled = true; btn.textContent = '...'; }
+    fetch('/api/scan/reputation/' + encodeURIComponent(domain), {method: 'POST'})
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            row.querySelector('.rep-vt').innerHTML = renderVtResult(data.virustotal);
+            row.querySelector('.rep-abuseipdb').innerHTML = renderAbuseResult(data.abuseipdb);
+            row.querySelector('.rep-urlhaus').innerHTML = renderUrlhausResult(data.urlhaus);
+            row.querySelector('.rep-time').innerHTML = '<small class="text-muted">' + fmtTime(data.scanned_at) + '</small>';
+        })
+        .catch(function() { alert('Reputation scan failed for ' + domain); })
+        .finally(function() { if (btn) { btn.disabled = false; btn.textContent = 'Scan'; } });
+}
+
+function scanAllReputation(btn) {
+    if (btn) { btn.disabled = true; btn.textContent = 'Scanning...'; }
+    var rows = document.querySelectorAll('#reputation-table tbody tr');
+    rows.forEach(function(row, idx) {
+        var domain = row.getAttribute('data-domain');
+        setTimeout(function() { scanSingleDomain(domain, row); }, idx * 1300);
+    });
+    if (btn) {
+        setTimeout(function() { btn.disabled = false; btn.textContent = 'Scan All Reputation'; }, (rows.length * 1300) + 1200);
+    }
+}
+
+function selectedCategorizationDomain() {
+    var el = document.getElementById('cat-domain');
+    return el ? (el.value || '').trim() : '';
+}
+
+function renderCategorizationScan(snapshot) {
+    var target = document.getElementById('cat-results');
+    var summaryEl = document.getElementById('cat-summary');
+    var scanTimeEl = document.getElementById('cat-last-scan');
+    if (!target) return;
+
+    if (!snapshot || !snapshot.results || !snapshot.results.length) {
+        target.innerHTML = '<p class="text-muted">No provider scan data yet.</p>';
+        summaryEl.textContent = '—';
+        scanTimeEl.textContent = '—';
+        return;
+    }
+
+    var summary = snapshot.summary || {};
+    summaryEl.textContent = 'Checked: ' + (summary.checked || 0) + ' | Challenge: ' + (summary.challenge || 0) + ' | Auth: ' + (summary.auth_required || 0) + ' | Errors: ' + (summary.errors || 0);
+    scanTimeEl.textContent = fmtTime(snapshot.scanned_at);
+
+    var html = '<table class="data-table"><thead><tr><th>Provider</th><th>Status</th><th>Category</th><th>Reputation</th><th>Notes</th></tr></thead><tbody>';
+    snapshot.results.forEach(function(item) {
+        var status = item.status || 'unknown';
+        var statusHtml = '<span class="status-warn">' + status + '</span>';
+        if (status === 'checked') statusHtml = '<span class="status-up">checked</span>';
+        if (status === 'error') statusHtml = '<span class="status-down">error</span>';
+        if (status === 'challenge') statusHtml = '<span class="status-warn">challenge</span>';
+        if (status === 'auth_required') statusHtml = '<span class="status-warn">auth_required</span>';
+        html += '<tr>';
+        html += '<td>' + (item.service || item.vendor || 'provider') + '</td>';
+        html += '<td>' + statusHtml + '</td>';
+        html += '<td>' + (item.category || '—') + '</td>';
+        html += '<td>' + (item.reputation || '—') + '</td>';
+        html += '<td>' + (item.message || '—') + '</td>';
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    target.innerHTML = html;
+}
+
+function loadCategorizationSnapshot() {
+    var domain = selectedCategorizationDomain();
+    if (!domain) return;
+    fetch('/api/categorization/scan/' + encodeURIComponent(domain))
+        .then(function(r) { return r.json(); })
+        .then(function(snapshot) {
+            renderCategorizationScan(snapshot || {});
+        })
+        .catch(function() {
+            document.getElementById('cat-results').innerHTML = '<span class="status-down">Failed loading categorization state.</span>';
+        });
+}
+
+function scanCategorizationProviders(btn) {
+    var domain = selectedCategorizationDomain();
+    if (!domain) { alert('Select a domain first.'); return; }
+    if (btn) { btn.disabled = true; btn.textContent = 'Scanning...'; }
+    fetch('/api/categorization/scan/' + encodeURIComponent(domain), {method: 'POST'})
+        .then(function(r) { return r.json(); })
+        .then(function(snapshot) {
+            renderCategorizationScan(snapshot || {});
+        })
+        .catch(function() {
+            alert('Categorization scan failed.');
+        })
+        .finally(function() {
+            if (btn) { btn.disabled = false; btn.textContent = 'Scan Providers'; }
+        });
+}
+
+loadMonitorStatus();
+loadCategorizationSnapshot();
+</script>
+{% endblock %}

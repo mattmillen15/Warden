@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 960" role="img" aria-label="Warden logo">
+  <defs>
+    <linearGradient id="shield" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b3a5b"/>
+      <stop offset="100%" stop-color="#0f6b5a"/>
+    </linearGradient>
+    <linearGradient id="glyph" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f4f8fb"/>
+      <stop offset="100%" stop-color="#dceaf2"/>
+    </linearGradient>
+  </defs>
+  <rect width="960" height="960" fill="#081825"/>
+  <path d="M480 90L790 210V430C790 635 656 785 480 855C304 785 170 635 170 430V210L480 90Z" fill="url(#shield)"/>
+  <path d="M305 300L375 300L430 575L480 430L530 575L585 300L655 300L565 675L515 675L480 545L445 675L395 675L305 300Z" fill="url(#glyph)"/>
+  <circle cx="480" cy="230" r="32" fill="#9ad3e2"/>
+</svg>

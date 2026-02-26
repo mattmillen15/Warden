@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contact Us &mdash; {{COMPANY_NAME}}</title>
+  <meta name="description" content="Schedule a complimentary portfolio review with {{COMPANY_NAME}}. Visit our Your City office on Wacker Drive or contact us online. SEC-registered investment advisor.">
+  <link rel="canonical" href="https://{{DOMAIN}}/contact.html">
+
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Contact Us &mdash; {{COMPANY_NAME}}">
+  <meta property="og:description" content="Schedule a complimentary portfolio review with our financial advisory team in Your City.">
+  <meta property="og:url" content="https://{{DOMAIN}}/contact.html">
+
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Contact Us &mdash; {{COMPANY_NAME}}">
+  <meta name="twitter:description" content="Schedule a complimentary portfolio review with our advisory team at 200 S. Wacker Drive, Your City.">
+
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- ========== HEADER ========== -->
+  <header class="site-header">
+    <div class="container header-inner">
+      <a href="index.html" class="logo"><span class="logo-icon">BCF</span> {{COMPANY_NAME}}</a>
+      <nav>
+        <ul class="nav-links">
+          <li><a href="index.html">Home</a></li>
+          <li><a href="about.html">About</a></li>
+          <li><a href="services.html">Services</a></li>
+          <li><a href="blog.html">Insights</a></li>
+          <li><a href="contact.html" class="active">Contact</a></li>
+          <li class="nav-cta"><a href="contact.html" class="btn btn--primary">Schedule Consultation</a></li>
+        </ul>
+      </nav>
+      <button class="hamburger" aria-label="Toggle navigation">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ========== PAGE HEADER ========== -->
+  <section class="page-header">
+    <div class="container">
+      <h1>Contact Us</h1>
+      <p>We welcome the opportunity to learn about your financial goals. Schedule a complimentary portfolio review or reach out directly.</p>
+    </div>
+  </section>
+
+  <!-- ========== CONTACT CONTENT ========== -->
+  <section class="section">
+    <div class="container">
+      <div class="contact-grid">
+
+        <!-- Contact Information -->
+        <div class="contact-info fade-in">
+          <h3>Get in Touch</h3>
+          <p>Whether you have a specific question or would like to explore how our services might benefit you, our team is here to help. We respond to all inquiries within one business day.</p>
+
+          <div class="contact-info-item">
+            <strong>Your City Office</strong>
+            <p>200 S. Wacker Drive<br>Suite 3100<br>Your City, ST 60606</p>
+          </div>
+
+          <div class="contact-info-item">
+            <strong>Phone</strong>
+            <p><a href="tel:+15555550100">(555) 555-0100</a></p>
+          </div>
+
+          <div class="contact-info-item">
+            <strong>Email</strong>
+            <p><a href="mailto:info@{{DOMAIN}}">info@{{DOMAIN}}</a></p>
+          </div>
+
+          <div class="contact-info-item">
+            <strong>Office Hours</strong>
+            <p>Monday &ndash; Friday: 8:00 AM &ndash; 5:30 PM CT<br>
+            Saturday &amp; Sunday: Closed</p>
+          </div>
+
+          <div class="contact-info-item">
+            <strong>Complimentary Portfolio Review</strong>
+            <p>Your initial consultation is complimentary and confidential. We will review your current financial position, discuss your goals, and determine whether our firm is the right fit for your needs. There is never any obligation or pressure.</p>
+          </div>
+
+          <div class="contact-info-item">
+            <strong>Existing Clients</strong>
+            <p>Current clients can access their accounts, documents, and performance reports through our secure client portal. If you need assistance with portal access, please contact our office directly at <a href="tel:+15555550100">(555) 555-0100</a>.</p>
+          </div>
+
+          <div class="contact-info-item" style="margin-top:2rem; padding:1.25rem; background:#f0eeea; border-radius:4px;">
+            <strong style="font-size:0.85rem;">Regulatory Disclosure</strong>
+            <p style="font-size:0.82rem; color:#666; margin-bottom:0;">{{COMPANY_NAME}} is an SEC-registered investment advisor. Registration with the SEC does not imply a certain level of skill or training. A copy of our current Form ADV Part 2A (Firm Brochure) is available upon request or may be obtained through the SEC's Investment Adviser Public Disclosure (IAPD) website at <a href="https://adviserinfo.sec.gov" target="_blank" rel="noopener">adviserinfo.sec.gov</a>.</p>
+          </div>
+        </div>
+
+        <!-- Contact Form -->
+        <div class="fade-in">
+          <form id="contactForm" class="contact-form">
+            <div class="form-row">
+              <div>
+                <label for="name">Full Name *</label>
+                <input type="text" id="name" name="name" required placeholder="Your full name">
+              </div>
+              <div>
+                <label for="phone">Phone Number</label>
+                <input type="tel" id="phone" name="phone" placeholder="(555) 555-5555">
+              </div>
+            </div>
+
+            <label for="email">Email Address *</label>
+            <input type="email" id="email" name="email" required placeholder="your@email.com">
+
+            <label for="contact-method">Preferred Contact Method</label>
+            <select id="contact-method" name="contact_method">
+              <option value="">Select your preference</option>
+              <option value="email">Email</option>
+              <option value="phone">Phone Call</option>
+              <option value="either">No Preference</option>
+            </select>
+
+            <label for="subject">How Can We Help?</label>
+            <select id="subject" name="subject">
+              <option value="">Select a topic</option>
+              <option value="portfolio-review">Complimentary Portfolio Review</option>
+              <option value="wealth-management">Wealth Management</option>
+              <option value="retirement-planning">Retirement Planning</option>
+              <option value="tax-strategy">Tax Strategy</option>
+              <option value="estate-planning">Estate Planning</option>
+              <option value="institutional">Institutional Services</option>
+              <option value="general">General Inquiry</option>
+            </select>
+
+            <label for="message">Message *</label>
+            <textarea id="message" name="message" required placeholder="Tell us about your financial goals or questions..."></textarea>
+
+            <button type="submit" class="btn btn--primary" style="width:100%;">Send Message</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== FOOTER ========== -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <a href="index.html" class="logo"><span class="logo-icon">BCF</span> {{COMPANY_NAME}}</a>
+          <p>Independent, fee-only financial advisory services. SEC-registered investment advisor committed to acting in your best interest.</p>
+        </div>
+        <div>
+          <h4>Services</h4>
+          <ul class="footer-links">
+            <li><a href="services.html#wealth-management">Wealth Management</a></li>
+            <li><a href="services.html#retirement-planning">Retirement Planning</a></li>
+            <li><a href="services.html#tax-strategy">Tax Strategy</a></li>
+            <li><a href="services.html#estate-planning">Estate Planning</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Company</h4>
+          <ul class="footer-links">
+            <li><a href="about.html">About Us</a></li>
+            <li><a href="blog.html">Insights</a></li>
+            <li><a href="contact.html">Contact</a></li>
+            <li><a href="privacy.html">Privacy Policy</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Contact</h4>
+          <ul class="footer-links">
+            <li>200 S. Wacker Drive<br>Suite 3100<br>Your City, ST 60606</li>
+            <li><a href="tel:+15555550100">(555) 555-0100</a></li>
+            <li><a href="mailto:info@{{DOMAIN}}">info@{{DOMAIN}}</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>&copy; 2026 {{COMPANY_NAME}}. All rights reserved. | <a href="privacy.html">Privacy Policy</a></p>
+        <p class="disclosure">Investment advisory services offered through {{COMPANY_NAME}}, an SEC-registered investment advisor. Past performance is not indicative of future results. Investing involves risk, including the potential loss of principal. Check the background of this firm on FINRA's <a href="https://brokercheck.finra.org" target="_blank" rel="noopener">BrokerCheck</a>.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="js/main.js"></script>
+</body>
+</html>

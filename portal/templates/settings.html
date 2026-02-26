@@ -1,0 +1,320 @@
+{% extends "base.html" %}
+{% block title %}Warden — Settings{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Settings</h1>
+</div>
+
+<form method="POST" action="{{ url_for('settings') }}">
+
+<!-- GitHub Linking -->
+<div class="card" style="max-width: 640px;">
+    <div class="card-header"><h2>GitHub Linking</h2></div>
+    <div class="card-body">
+        <p class="card-desc">Connect a GitHub account to auto-create repos and push generated sites. Leave blank to generate files locally only.</p>
+
+        <div class="form-group">
+            <label for="github_username">GitHub Username</label>
+            <input type="text" id="github_username" name="github_username" value="{{ config.get('github_username', '') }}" placeholder="your-github-username">
+        </div>
+
+        <div class="form-group">
+            <label for="github_pat">Personal Access Token (PAT)</label>
+            <input type="password" id="github_pat" name="github_pat" value="{{ config.get('github_pat', '') }}" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx">
+            <small>Needs <code>repo</code> scope. Create one at <a href="https://github.com/settings/tokens" target="_blank">GitHub Settings → Tokens</a></small>
+        </div>
+
+        <div class="form-group">
+            <label class="checkbox-label">
+                <input type="checkbox" name="github_auto_push" value="1" {% if config.get('github_auto_push') %}checked{% endif %}>
+                Auto-push on generate (create repo + push + enable Pages)
+            </label>
+            <small>When enabled, generating a site will automatically create the GitHub repo, push files, and enable GitHub Pages.</small>
+        </div>
+    </div>
+</div>
+
+<!-- Email Delivery / Warmup Provider -->
+<div class="card" style="max-width: 640px; margin-top: 24px;">
+    <div class="card-header"><h2>Email Delivery (Warmup)</h2></div>
+    <div class="card-body">
+        <p class="card-desc">Select which provider Warden should use for warmup email sending. Credentials for both providers can be stored so you can switch later without re-entering them.</p>
+
+        <div class="form-group">
+            <label for="email_provider">Email Service Provider</label>
+            <select id="email_provider" name="email_provider" onchange="updateEmailProviderFields()">
+                {% for opt in email_provider_options %}
+                <option value="{{ opt.key }}" {% if email_provider == opt.key %}selected{% endif %}>{{ opt.label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div id="email-provider-mailjet-fields" class="provider-cred-group">
+            <div class="form-group">
+                <label for="mailjet_api_key">Mailjet API Key</label>
+                <input type="text" id="mailjet_api_key" name="mailjet_api_key" value="{{ config.get('mailjet_api_key', '') }}" placeholder="Mailjet API key">
+            </div>
+
+            <div class="form-group">
+                <label for="mailjet_api_secret">Mailjet API Secret</label>
+                <input type="password" id="mailjet_api_secret" name="mailjet_api_secret" value="{{ config.get('mailjet_api_secret', '') }}" placeholder="Mailjet API secret">
+            </div>
+            <small>Get Mailjet credentials from <a href="https://app.mailjet.com/account/apikeys" target="_blank">Mailjet Dashboard</a>.</small>
+        </div>
+
+        <div id="email-provider-smtp2go-fields" class="provider-cred-group" style="display:none;">
+            <div class="form-group">
+                <label for="smtp2go_api_key">SMTP2GO API Key</label>
+                <input type="password" id="smtp2go_api_key" name="smtp2go_api_key" value="{{ config.get('smtp2go_api_key', '') }}" placeholder="SMTP2GO API key">
+            </div>
+            <small>Use an SMTP2GO API key with <code>/email/send</code> permission (and optionally <code>/api_keys/permissions</code> for the test endpoint).</small>
+        </div>
+    </div>
+</div>
+
+<!-- Categorization & Reputation APIs -->
+<div class="card" style="max-width: 640px; margin-top: 24px;">
+    <div class="card-header"><h2>Categorization &amp; Reputation APIs</h2></div>
+    <div class="card-body">
+        <p class="card-desc">API keys and credentials for reputation checks plus provider-assisted categorization workflows.</p>
+
+        <div class="form-group">
+            <label for="virustotal_api_key">VirusTotal API Key</label>
+            <input type="password" id="virustotal_api_key" name="virustotal_api_key" value="{{ config.get('virustotal_api_key', '') }}" placeholder="VirusTotal API key">
+            <small>Free tier: 4 requests/min. Get yours at <a href="https://www.virustotal.com/gui/my-apikey" target="_blank">VirusTotal</a></small>
+        </div>
+
+        <div class="form-group">
+            <label for="abuseipdb_api_key">AbuseIPDB API Key</label>
+            <input type="password" id="abuseipdb_api_key" name="abuseipdb_api_key" value="{{ config.get('abuseipdb_api_key', '') }}" placeholder="AbuseIPDB API key">
+            <small>Free tier: 1000 checks/day. Get yours at <a href="https://www.abuseipdb.com/account/api" target="_blank">AbuseIPDB</a></small>
+        </div>
+
+        <div class="form-group">
+            <label for="urlhaus_api_key">URLhaus API Key</label>
+            <input type="password" id="urlhaus_api_key" name="urlhaus_api_key" value="{{ config.get('urlhaus_api_key', '') }}" placeholder="URLhaus Auth-Key (optional)">
+            <small>URLhaus works without a key but rate-limited. Get one at <a href="https://urlhaus.abuse.ch/api/" target="_blank">URLhaus</a></small>
+        </div>
+
+        <div class="form-group">
+            <label for="twocaptcha_api_key">2Captcha API Key</label>
+            <input type="password" id="twocaptcha_api_key" name="twocaptcha_api_key" value="{{ config.get('twocaptcha_api_key', '') }}" placeholder="2Captcha API key (for browser-based checks)">
+            <small>Required for browser-based categorization checks (BlueCoat, McAfee, etc). Get yours at <a href="https://2captcha.com/enterpage" target="_blank">2Captcha</a></small>
+        </div>
+
+        <div class="form-group">
+            <label for="talos_username">Cisco Talos Username</label>
+            <input type="text" id="talos_username" name="talos_username" value="{{ config.get('talos_username', '') }}" placeholder="Talos account username/email">
+        </div>
+
+        <div class="form-group">
+            <label for="talos_password">Cisco Talos Password</label>
+            <input type="password" id="talos_password" name="talos_password" value="{{ config.get('talos_password', '') }}" placeholder="Talos account password">
+        </div>
+
+        <div class="form-group">
+            <label>
+                <input type="checkbox" name="categorization_browser_fallback" {% if config.get('categorization_browser_fallback', true) %}checked{% endif %} style="width:auto; margin-right:8px;">
+                Enable browser fallback for categorization scans
+            </label>
+            <small>Recommended: improves provider coverage when direct HTTP checks are blocked by CAPTCHA or anti-bot controls.</small>
+        </div>
+    </div>
+</div>
+
+<div style="max-width: 640px; margin-top: 24px;">
+    <button type="submit" class="btn btn-primary btn-full">Save All Settings</button>
+</div>
+
+</form>
+
+<!-- Connection Tests -->
+<div class="card" style="max-width: 640px; margin-top: 24px;">
+    <div class="card-header"><h2>Connection Tests</h2></div>
+    <div class="card-body">
+        <div class="test-row">
+            <span>GitHub API</span>
+            <button type="button" class="btn btn-xs" id="test-gh" onclick="testGitHub()">Test</button>
+        </div>
+        <div class="test-row">
+            <span>Mailjet API</span>
+            <button type="button" class="btn btn-xs" id="test-mailjet" onclick="testMailjet()">Test</button>
+        </div>
+        <div class="test-row">
+            <span>SMTP2GO API</span>
+            <button type="button" class="btn btn-xs" id="test-smtp2go" onclick="testSmtp2Go()">Test</button>
+        </div>
+        <div class="test-row">
+            <span>VirusTotal API</span>
+            <button type="button" class="btn btn-xs" id="test-vt" onclick="testApi('virustotal')">Test</button>
+        </div>
+        <div class="test-row">
+            <span>AbuseIPDB API</span>
+            <button type="button" class="btn btn-xs" id="test-abuseipdb" onclick="testApi('abuseipdb')">Test</button>
+        </div>
+        <div class="test-row">
+            <span>URLhaus API</span>
+            <button type="button" class="btn btn-xs" id="test-urlhaus" onclick="testApi('urlhaus')">Test</button>
+        </div>
+        <div class="test-row">
+            <span>Categorization Engine</span>
+            <button type="button" class="btn btn-xs" id="test-cat-engine" onclick="testCategorizationEngine()">Test</button>
+        </div>
+    </div>
+</div>
+
+<script>
+function testGitHub() {
+    var btn = document.getElementById('test-gh');
+    btn.textContent = 'Testing...';
+    btn.disabled = true;
+    btn.className = 'btn btn-xs';
+    fetch('/api/test/github')
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                btn.textContent = 'Connected (' + data.user + ')';
+                btn.classList.add('btn-success');
+            } else {
+                btn.textContent = data.error || 'Failed';
+                btn.classList.add('btn-danger');
+            }
+            btn.disabled = false;
+        })
+        .catch(() => {
+            btn.textContent = 'Error';
+            btn.classList.add('btn-danger');
+            btn.disabled = false;
+        });
+}
+
+function testMailjet() {
+    var btn = document.getElementById('test-mailjet');
+    btn.textContent = 'Testing...';
+    btn.disabled = true;
+    btn.className = 'btn btn-xs';
+    fetch('/api/test/mailjet')
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                btn.textContent = 'Connected';
+                btn.classList.add('btn-success');
+            } else {
+                btn.textContent = data.error || 'Not Configured';
+                btn.classList.add('btn-warning');
+            }
+            btn.disabled = false;
+        })
+        .catch(() => {
+            btn.textContent = 'Error';
+            btn.classList.add('btn-danger');
+            btn.disabled = false;
+        });
+}
+
+function testSmtp2Go() {
+    var btn = document.getElementById('test-smtp2go');
+    btn.textContent = 'Testing...';
+    btn.disabled = true;
+    btn.className = 'btn btn-xs';
+    btn.title = '';
+    fetch('/api/test/smtp2go')
+        .then(r => r.json())
+        .then(data => {
+            if (data.detail) {
+                btn.title = data.detail;
+            } else if (data.message) {
+                btn.title = data.message;
+            }
+            if (data.success) {
+                btn.textContent = data.message || 'Connected';
+                btn.classList.add(data.send_allowed === false ? 'btn-warning' : 'btn-success');
+            } else {
+                btn.textContent = data.error || 'Not Configured';
+                btn.classList.add(data.error === 'Not configured' ? 'btn-warning' : 'btn-danger');
+            }
+            btn.disabled = false;
+        })
+        .catch(() => {
+            btn.textContent = 'Error';
+            btn.classList.add('btn-danger');
+            btn.disabled = false;
+        });
+}
+
+function testApi(service) {
+    var btn = document.getElementById('test-' + (service === 'virustotal' ? 'vt' : service));
+    btn.textContent = 'Testing...';
+    btn.disabled = true;
+    btn.className = 'btn btn-xs';
+    btn.title = '';
+    fetch('/api/test/' + service)
+        .then(r => r.json())
+        .then(data => {
+            if (data.detail) {
+                btn.title = data.detail;
+                try { console.log(service + ' test detail:', data.detail, data); } catch (e) {}
+            } else if (data.message) {
+                btn.title = data.message;
+            }
+            if (data.success) {
+                btn.textContent = 'Connected';
+                btn.classList.add('btn-success');
+            } else {
+                btn.textContent = data.error || 'Failed';
+                btn.classList.add(data.error === 'Not configured' ? 'btn-warning' : 'btn-danger');
+            }
+            btn.disabled = false;
+        })
+        .catch(() => {
+            btn.textContent = 'Error';
+            btn.classList.add('btn-danger');
+            btn.disabled = false;
+        });
+}
+
+function testCategorizationEngine() {
+    var btn = document.getElementById('test-cat-engine');
+    btn.textContent = 'Testing...';
+    btn.disabled = true;
+    btn.className = 'btn btn-xs';
+    fetch('/api/test/categorization-engine')
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                if (data.missing_auth && data.missing_auth.length) {
+                    btn.textContent = 'Ready (Auth missing)';
+                    btn.classList.add('btn-warning');
+                } else {
+                    btn.textContent = 'Ready';
+                    btn.classList.add('btn-success');
+                }
+            } else {
+                btn.textContent = data.error || 'Failed';
+                btn.classList.add('btn-danger');
+            }
+            btn.disabled = false;
+        })
+        .catch(() => {
+            btn.textContent = 'Error';
+            btn.classList.add('btn-danger');
+            btn.disabled = false;
+        });
+}
+
+function updateEmailProviderFields() {
+    var sel = document.getElementById('email_provider');
+    var provider = sel ? String(sel.value || 'mailjet').toLowerCase() : 'mailjet';
+    var mailjet = document.getElementById('email-provider-mailjet-fields');
+    var smtp2go = document.getElementById('email-provider-smtp2go-fields');
+    if (mailjet) mailjet.style.display = (provider === 'mailjet') ? '' : 'none';
+    if (smtp2go) smtp2go.style.display = (provider === 'smtp2go') ? '' : 'none';
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    updateEmailProviderFields();
+});
+
+</script>
+{% endblock %}
