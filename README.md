@@ -1,10 +1,10 @@
 # Warden
-
 Portal for domain lifecycle monitoring:
 - onboard and generate sites
 - track health / reputation / categorization
 - manage email warmup
 - monitor changes over time
+<img width="1698" height="715" alt="image" src="https://github.com/user-attachments/assets/74b2e916-da9f-49f1-9f05-24df21b30cab" />
 
 ## Quick Start
 
