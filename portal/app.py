@@ -15,14 +15,13 @@ import hashlib
 import base64
 import binascii
 import subprocess
-import tempfile
 import time
 import random
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from urllib.parse import urlencode, urljoin, quote
+from urllib.parse import urljoin, quote
 
 import dns.resolver
 import requests
@@ -192,20 +191,11 @@ WARMUP_FREQUENCIES = {
     "weekly": {"hours": 168, "label": "Weekly"},
 }
 
-MAILJET_SYNC_LOOKBACKS = {
-    "1h": {"seconds": 3600, "label": "1 Hour", "limit_hint": 100},
-    "12h": {"seconds": 12 * 3600, "label": "12 Hours", "limit_hint": 200},
-    "1d": {"seconds": 24 * 3600, "label": "1 Day", "limit_hint": 300},
-    "1w": {"seconds": 7 * 24 * 3600, "label": "1 Week", "limit_hint": 500},
-    "30d": {"seconds": 30 * 24 * 3600, "label": "30 Days", "limit_hint": 500},
-}
-DEFAULT_MAILJET_SYNC_LOOKBACK = "1d"
-
 EMAIL_PROVIDER_OPTIONS = {
-    "mailjet": {"label": "Mailjet"},
+    "cloudflare": {"label": "Cloudflare Email"},
     "smtp2go": {"label": "SMTP2GO"},
 }
-DEFAULT_EMAIL_PROVIDER = "mailjet"
+DEFAULT_EMAIL_PROVIDER = "cloudflare"
 SMTP2GO_API_BASE = "https://api.smtp2go.com/v3"
 
 # ── Secure storage + config helpers ─────────────────────────────
@@ -382,9 +372,9 @@ def get_email_provider_label(provider=None, cfg=None):
     return (EMAIL_PROVIDER_OPTIONS.get(key) or {}).get("label", "Mail Provider")
 
 
-def mailjet_provider_configured(cfg=None):
+def cloudflare_provider_configured(cfg=None):
     data = cfg if isinstance(cfg, dict) else load_config()
-    return bool(str(data.get("mailjet_api_key") or "").strip() and str(data.get("mailjet_api_secret") or "").strip())
+    return bool(str(data.get("cloudflare_email_api_token") or "").strip() and str(data.get("cloudflare_account_id") or "").strip())
 
 
 def smtp2go_provider_configured(cfg=None):
@@ -397,7 +387,7 @@ def current_mail_provider_configured(cfg=None):
     provider = get_email_provider(data)
     if provider == "smtp2go":
         return smtp2go_provider_configured(data)
-    return mailjet_provider_configured(data)
+    return cloudflare_provider_configured(data)
 
 
 def load_domains():
@@ -442,13 +432,7 @@ def save_scan_state(state):
 
 
 def default_email_log():
-    return {
-        "entries": [],
-        "last_synced_at": None,
-        "mailjet_sync_summary": None,
-        "mailjet_sync_lookback": DEFAULT_MAILJET_SYNC_LOOKBACK,
-        "mailjet_sync_label": (MAILJET_SYNC_LOOKBACKS.get(DEFAULT_MAILJET_SYNC_LOOKBACK) or {}).get("label", "1 Day"),
-    }
+    return {"entries": []}
 
 
 def load_email_log():
@@ -456,20 +440,12 @@ def load_email_log():
     if not isinstance(payload, dict):
         return default_email_log()
     payload.setdefault("entries", [])
-    payload.setdefault("last_synced_at", None)
-    payload.setdefault("mailjet_sync_summary", None)
-    payload.setdefault("mailjet_sync_lookback", DEFAULT_MAILJET_SYNC_LOOKBACK)
-    payload.setdefault("mailjet_sync_label", (MAILJET_SYNC_LOOKBACKS.get(DEFAULT_MAILJET_SYNC_LOOKBACK) or {}).get("label", "1 Day"))
     return payload
 
 
 def save_email_log(payload):
     data = payload if isinstance(payload, dict) else default_email_log()
     data.setdefault("entries", [])
-    data.setdefault("last_synced_at", None)
-    data.setdefault("mailjet_sync_summary", None)
-    data.setdefault("mailjet_sync_lookback", DEFAULT_MAILJET_SYNC_LOOKBACK)
-    data.setdefault("mailjet_sync_label", (MAILJET_SYNC_LOOKBACKS.get(DEFAULT_MAILJET_SYNC_LOOKBACK) or {}).get("label", "1 Day"))
     _save_secure_json(EMAIL_LOG_FILE, data)
 
 
@@ -488,41 +464,6 @@ def _ensure_aware_utc(dt):
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
-
-
-def normalize_mailjet_sync_lookback(value):
-    key = str(value or DEFAULT_MAILJET_SYNC_LOOKBACK).strip().lower()
-    if key not in MAILJET_SYNC_LOOKBACKS:
-        key = DEFAULT_MAILJET_SYNC_LOOKBACK
-    return key
-
-
-def mailjet_sync_lookback_cutoff(lookback_key):
-    key = normalize_mailjet_sync_lookback(lookback_key)
-    spec = MAILJET_SYNC_LOOKBACKS.get(key) or MAILJET_SYNC_LOOKBACKS[DEFAULT_MAILJET_SYNC_LOOKBACK]
-    return _ensure_aware_utc(datetime.now(timezone.utc) - timedelta(seconds=int(spec.get("seconds", 86400))))
-
-
-def _mailjet_record_event_dt(record):
-    if not isinstance(record, dict):
-        return None
-    dt = parse_iso_datetime(
-        record.get("last_event_at")
-        or record.get("SendEndAt")
-        or record.get("CreatedAt")
-        or record.get("ArrivedAt")
-        or record.get("LastActivityAt")
-    )
-    return _ensure_aware_utc(dt)
-
-
-def _mailjet_record_in_lookback(record, cutoff_dt):
-    if not cutoff_dt:
-        return True
-    event_dt = _mailjet_record_event_dt(record)
-    if not event_dt:
-        return True
-    return event_dt >= cutoff_dt
 
 
 def monitor_next_run_iso(monitor_cfg):
@@ -1552,6 +1493,22 @@ def resolve_domain_age_days(domain_entry):
         return 0, "unknown"
 
 
+def auto_transition_domain_status(domain_entry):
+    age_days, _ = resolve_domain_age_days(domain_entry)
+    current = str(domain_entry.get("status") or "").lower()
+    if current in ("burned", "retired"):
+        return False
+    if current == "deployed" and age_days >= 14:
+        domain_entry["status"] = "aging"
+        return True
+    if current == "aging" and age_days >= 90:
+        has_category = bool(domain_entry.get("category_talos") or domain_entry.get("category"))
+        if has_category:
+            domain_entry["status"] = "active"
+            return True
+    return False
+
+
 def persist_scan_snapshot_to_domains(domain, health=None, reputation=None, categorization=None):
     domains_data = load_domains()
     updated = False
@@ -1616,6 +1573,14 @@ def persist_scan_snapshot_to_domains(domain, health=None, reputation=None, categ
                 d["category"] = talos_category
                 d["category_source"] = "talos"
                 d["category_last_updated"] = categorization.get("scanned_at")
+            else:
+                for item in (categorization.get("results") or []):
+                    cat = _normalize_whitespace(item.get("category", ""))
+                    if item.get("status") == "checked" and cat and cat.lower() not in ("unknown", "none", "n/a", "none/not categorized"):
+                        d["category"] = cat
+                        d["category_source"] = item.get("vendor", "unknown")
+                        d["category_last_updated"] = categorization.get("scanned_at")
+                        break
             updated = True
         break
 
@@ -1845,6 +1810,9 @@ def fallback_discover_domains(
 
 
 def monitor_job_wrapper():
+    domains_data = load_domains()
+    if refresh_whois_cache(domains_data, max_refresh=20):
+        save_domains(domains_data)
     run_full_snapshot_all()
 
 
@@ -1903,11 +1871,6 @@ def execute_warmup_batch(from_email, from_name, to_emails, count, source="warmup
         result["to"] = to
         result["subject"] = subject
         results.append(result)
-        meta = _extract_mailjet_send_meta(result)
-        initial_delivery_status = (
-            result.get("delivery_status")
-            or _initial_mail_delivery_status(meta.get("mailjet_status"), bool(result.get("success")))
-        )
         entry = {
             "id": str(uuid.uuid4()),
             "batch_id": batch_id,
@@ -1920,11 +1883,9 @@ def execute_warmup_batch(from_email, from_name, to_emails, count, source="warmup
             "success": bool(result.get("success")),
             "error": result.get("error", ""),
             "provider": result.get("provider") or get_email_provider(),
-            "provider_status": result.get("provider_status") or result.get("mailjet_status"),
-            "mailjet_status": result.get("mailjet_status") or meta.get("mailjet_status") or ("error" if not result.get("success") else "success"),
-            "delivery_status": initial_delivery_status,
-            "message_id": result.get("message_id") or meta.get("message_id"),
-            "message_uuid": result.get("message_uuid") or meta.get("message_uuid"),
+            "provider_status": result.get("provider_status") or ("accepted" if result.get("success") else "failed"),
+            "delivery_status": result.get("delivery_status") or ("accepted" if result.get("success") else "failed"),
+            "message_id": result.get("message_id"),
             "last_event_at": datetime.now().isoformat(),
         }
         if isinstance(batch_meta, dict):
@@ -2331,7 +2292,7 @@ def check_email_records(domain):
         pass
 
     # DKIM (common selectors)
-    for selector in ["default", "mailjet", "google", "k1", "selector1", "selector2", "s1", "s2"]:
+    for selector in ["default", "google", "k1", "selector1", "selector2", "s1", "s2"]:
         try:
             answers = resolver.resolve(f"{selector}._domainkey.{domain}", "TXT")
             for r in answers:
@@ -3261,10 +3222,6 @@ def generate_site(domain, category, company_name):
 # ── Email provider helpers ──────────────────────────────────────
 
 
-MAILJET_SENDER_CACHE_TTL_SECONDS = 300
-MAILJET_SENDER_CACHE = {"by_email": {}, "by_domain": {}}
-
-
 def _extract_email_domain(address):
     value = str(address or "").strip().lower()
     if "@" not in value:
@@ -3318,213 +3275,52 @@ def _smtp2go_api_request(path, payload=None, timeout=20):
     }
 
 
-def _mailjet_api_get(resource, params=None, timeout=20):
+def send_warmup_email_cloudflare(from_email, from_name, to_email, subject, body):
     cfg = load_config()
-    api_key = str(cfg.get("mailjet_api_key") or "").strip()
-    api_secret = str(cfg.get("mailjet_api_secret") or "").strip()
-    if not api_key or not api_secret:
-        return {"success": False, "error": "Mailjet not configured", "status_code": None, "data": []}
+    api_token = str(cfg.get("cloudflare_email_api_token") or "").strip()
+    account_id = str(cfg.get("cloudflare_account_id") or "").strip()
+    if not api_token or not account_id:
+        return {"success": False, "error": "Cloudflare Email not configured", "provider": "cloudflare"}
+    destination = str(to_email or "").strip()
+    if not destination:
+        return {"success": False, "error": "Recipient email required", "provider": "cloudflare"}
+    sender = str(from_email or "").strip()
+    sender_name = str(from_name or "").strip()
+    from_value = f"{sender_name} <{sender}>" if sender_name else sender
+    payload = {
+        "to": destination,
+        "from": from_value,
+        "subject": str(subject or ""),
+        "text": str(body or ""),
+        "html": f"<p>{str(body or '')}</p>",
+    }
     try:
-        resp = requests.get(
-            f"https://api.mailjet.com/v3/REST/{resource}",
-            auth=(api_key, api_secret),
-            params=params or {},
-            timeout=timeout,
+        resp = requests.post(
+            f"https://api.cloudflare.com/client/v4/accounts/{account_id}/email/sending/send",
+            headers={"Authorization": f"Bearer {api_token}", "Content-Type": "application/json"},
+            json=payload,
+            timeout=30,
         )
-    except Exception as exc:
-        return {"success": False, "error": str(exc), "status_code": None, "data": []}
-    if resp.status_code != 200:
-        return {"success": False, "error": f"HTTP {resp.status_code}", "status_code": resp.status_code, "data": []}
-    try:
-        payload = resp.json()
-    except Exception:
-        return {"success": False, "error": "Invalid Mailjet response", "status_code": resp.status_code, "data": []}
-    return {
-        "success": True,
-        "status_code": resp.status_code,
-        "data": payload.get("Data") or [],
-        "count": payload.get("Count"),
-        "total": payload.get("Total"),
-    }
-
-
-def _get_mailjet_sender_records(email):
-    normalized = str(email or "").strip().lower()
-    if not normalized:
-        return []
-    cache_entry = MAILJET_SENDER_CACHE["by_email"].get(normalized)
-    if cache_entry and (time.time() - cache_entry.get("ts", 0) < MAILJET_SENDER_CACHE_TTL_SECONDS):
-        return cache_entry.get("rows", [])
-    result = _mailjet_api_get("sender", {"Email": normalized})
-    rows = result.get("data", []) if result.get("success") else []
-    MAILJET_SENDER_CACHE["by_email"][normalized] = {"ts": time.time(), "rows": rows}
-    return rows
-
-
-def _get_mailjet_domain_sender_records(domain):
-    normalized = str(domain or "").strip().lower()
-    if not normalized:
-        return []
-    cache_entry = MAILJET_SENDER_CACHE["by_domain"].get(normalized)
-    if cache_entry and (time.time() - cache_entry.get("ts", 0) < MAILJET_SENDER_CACHE_TTL_SECONDS):
-        return cache_entry.get("rows", [])
-    wildcard = f"*@{normalized}"
-    result = _mailjet_api_get("sender", {"Email": wildcard})
-    rows = result.get("data", []) if result.get("success") else []
-    MAILJET_SENDER_CACHE["by_domain"][normalized] = {"ts": time.time(), "rows": rows}
-    return rows
-
-
-def validate_mailjet_sender(from_email):
-    email = str(from_email or "").strip().lower()
-    local, domain = _extract_email_domain(email)
-    if not local or not domain:
-        return {"valid": False, "error": "Invalid From Email address format."}
-
-    exact_rows = _get_mailjet_sender_records(email)
-    wildcard_rows = _get_mailjet_domain_sender_records(domain)
-
-    def _active(rows, match_email=None):
-        for row in rows or []:
-            row_email = str(row.get("Email") or "").strip().lower()
-            status = str(row.get("Status") or "").strip().lower()
-            if match_email and row_email != match_email:
-                continue
-            if status == "active":
-                return row
-        return None
-
-    active_exact = _active(exact_rows, email)
-    active_wildcard = _active(wildcard_rows)
-    exact_inactive = None
-    for row in exact_rows or []:
-        row_email = str(row.get("Email") or "").strip().lower()
-        if row_email == email and str(row.get("Status") or "").strip().lower() != "active":
-            exact_inactive = row
-            break
-
-    if active_exact or active_wildcard:
-        return {
-            "valid": True,
-            "email": email,
-            "domain": domain,
-            "sender_mode": "exact" if active_exact else "domain_wildcard",
-            "sender_status": "active",
-            "warning": (
-                "Exact sender is inactive, but domain wildcard sender is active."
-                if (not active_exact and exact_inactive and active_wildcard)
-                else ""
-            ),
-        }
-
-    if exact_inactive:
-        return {
-            "valid": False,
-            "email": email,
-            "domain": domain,
-            "error": (
-                f"Mailjet sender {email} exists but is not active (Status: {exact_inactive.get('Status')}). "
-                "Activate/verify the sender or use a domain with an active Mailjet sender."
-            ),
-        }
-
-    if exact_rows or wildcard_rows:
-        return {
-            "valid": False,
-            "email": email,
-            "domain": domain,
-            "error": (
-                f"Mailjet sender/domain for {email} is not active in this tenant. "
-                "Add and verify the sender or authenticated sending domain in Mailjet first."
-            ),
-        }
-
-    return {
-        "valid": False,
-        "email": email,
-        "domain": domain,
-        "error": (
-            f"{domain} is not configured in this Mailjet tenant (no active sender record found for {email} or *@{domain})."
-        ),
-    }
-
-
-def get_mailjet_client():
-    cfg = load_config()
-    api_key = cfg.get("mailjet_api_key", "")
-    api_secret = cfg.get("mailjet_api_secret", "")
-    if not api_key or not api_secret:
-        return None
-    try:
-        from mailjet_rest import Client
-        return Client(auth=(api_key, api_secret), version="v3.1")
-    except Exception:
-        return None
-
-
-def send_warmup_email_mailjet(from_email, from_name, to_email, subject, body):
-    client = get_mailjet_client()
-    if not client:
-        return {"success": False, "error": "Mailjet not configured", "provider": "mailjet"}
-    sender_check = validate_mailjet_sender(from_email)
-    if not sender_check.get("valid"):
-        return {
-            "success": False,
-            "error": sender_check.get("error", "From Email is not authorized in Mailjet"),
-            "provider": "mailjet",
-        }
-    data = {
-        "Messages": [{
-            "From": {"Email": from_email, "Name": from_name},
-            "To": [{"Email": to_email, "Name": ""}],
-            "Subject": subject,
-            "TextPart": body,
-            "HTMLPart": f"<p>{body}</p>",
-        }]
-    }
-    try:
-        result = client.send.create(data=data)
-        status_code = int(getattr(result, "status_code", 0) or 0)
         try:
-            payload = result.json()
+            data = resp.json()
         except Exception:
-            payload = {}
-        meta = _extract_mailjet_send_meta({"data": payload})
-        mailjet_status = _normalize_mail_status(meta.get("mailjet_status"))
-        accepted_http = status_code in (200, 201)
-        accepted_by_mailjet = mailjet_status in {"success", "accepted", "queued"} or (
-            accepted_http and mailjet_status == "unknown"
-        )
-        success = accepted_http and accepted_by_mailjet
-
-        error_parts = []
-        if not accepted_http:
-            error_parts.append(f"HTTP {status_code}")
-        elif mailjet_status not in {"success", "accepted", "queued", "unknown"}:
-            error_parts.append(f"Mailjet status: {mailjet_status}")
-
-        mailjet_error = _format_mailjet_errors(meta.get("mailjet_error"))
-        if mailjet_error:
-            error_parts.append(mailjet_error)
-
-        initial_delivery_status = _initial_mail_delivery_status(mailjet_status, success)
-        response = {
-            "success": success,
-            "status": status_code,
-            "data": payload,
-            "provider": "mailjet",
-            "provider_status": mailjet_status,
-            "mailjet_status": mailjet_status,
-            "delivery_status": initial_delivery_status,
-            "message_id": meta.get("message_id"),
-            "message_uuid": meta.get("message_uuid"),
-            "sender_validation": sender_check,
+            data = {}
+        ok = 200 <= resp.status_code < 300 and data.get("success", False)
+        result = {
+            "success": ok,
+            "status": resp.status_code,
+            "data": data,
+            "provider": "cloudflare",
+            "provider_status": "accepted" if ok else "failed",
+            "delivery_status": "accepted" if ok else "failed",
         }
-        if error_parts:
-            response["error"] = " | ".join([part for part in error_parts if part])
-        return response
+        if not ok:
+            errors = data.get("errors") or []
+            err_msg = "; ".join(str(e.get("message", "")) for e in errors if isinstance(e, dict)) if errors else f"HTTP {resp.status_code}"
+            result["error"] = err_msg
+        return result
     except Exception as e:
-        return {"success": False, "error": str(e), "provider": "mailjet"}
+        return {"success": False, "error": str(e), "provider": "cloudflare"}
 
 
 def send_warmup_email_smtp2go(from_email, from_name, to_email, subject, body):
@@ -3583,7 +3379,7 @@ def send_warmup_email(from_email, from_name, to_email, subject, body):
     provider = get_email_provider(cfg)
     if provider == "smtp2go":
         return send_warmup_email_smtp2go(from_email, from_name, to_email, subject, body)
-    return send_warmup_email_mailjet(from_email, from_name, to_email, subject, body)
+    return send_warmup_email_cloudflare(from_email, from_name, to_email, subject, body)
 
 
 NEGATIVE_MAIL_STATUSES = {"bounce", "bounced", "blocked", "spam", "unsub", "deferred", "hard_bounce", "soft_bounce"}
@@ -3601,330 +3397,11 @@ def _normalize_mail_status(value):
     return aliases.get(status, status)
 
 
-def _format_mailjet_errors(errors):
-    if not errors:
-        return ""
-    if isinstance(errors, list):
-        parts = []
-        for item in errors:
-            if isinstance(item, dict):
-                code = item.get("ErrorIdentifier") or item.get("ErrorCode") or item.get("Code")
-                msg = item.get("ErrorMessage") or item.get("Message")
-                if code and msg:
-                    parts.append(f"{code}: {msg}")
-                elif msg:
-                    parts.append(str(msg))
-                elif code:
-                    parts.append(str(code))
-                else:
-                    parts.append(json.dumps(item, sort_keys=True))
-            else:
-                parts.append(str(item))
-        return "; ".join([p for p in parts if p])
-    if isinstance(errors, dict):
-        return json.dumps(errors, sort_keys=True)
-    return str(errors)
-
-
-def _initial_mail_delivery_status(mailjet_status, success):
-    status = _normalize_mail_status(mailjet_status)
-    if not success:
-        return "failed"
-    if status in {"unknown", "success"}:
-        return "accepted"
-    return status
-
-
 def _delivery_status_counts_as_success(value):
     status = _normalize_mail_status(value)
     if status in NEGATIVE_MAIL_STATUSES or status in {"failed", "error", "rejected", "unknown"}:
         return False
     return status in {"accepted", "queued", "sent", "success", "delivered", "opened", "clicked"}
-
-
-def _safe_int(value, default=None):
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def _mailjet_status_priority(value):
-    status = _normalize_mail_status(value)
-    priority = {
-        "failed": 100,
-        "error": 100,
-        "rejected": 95,
-        "hard_bounce": 90,
-        "soft_bounce": 89,
-        "bounce": 88,
-        "bounced": 88,
-        "blocked": 87,
-        "spam": 86,
-        "unsub": 85,
-        "deferred": 60,
-        "clicked": 50,
-        "opened": 45,
-        "delivered": 40,
-        "sent": 35,
-        "queued": 20,
-        "accepted": 15,
-        "success": 15,
-        "unknown": 0,
-    }
-    return priority.get(status, 10)
-
-
-def _derive_status_from_messageinformation(info_row):
-    if not info_row:
-        return None
-
-    # Mailjet's messageinformation payload can expose lifecycle counts. Some transactional
-    # accounts return "SentCount" as a UNIX timestamp-like integer instead of a counter.
-    negative_mappings = [
-        ("HardBouncedCount", "hard_bounce"),
-        ("SoftBouncedCount", "soft_bounce"),
-        ("BounceCount", "bounced"),
-        ("BouncedCount", "bounced"),
-        ("BlockedCount", "blocked"),
-        ("SpamCount", "spam"),
-        ("UnsubCount", "unsub"),
-        ("UnsubscribedCount", "unsub"),
-        ("DeferredCount", "deferred"),
-    ]
-    for key, status in negative_mappings:
-        value = _safe_int(info_row.get(key))
-        if value and value > 0:
-            return status
-
-    if (_safe_int(info_row.get("ClickTrackedCount")) or 0) > 0:
-        return "clicked"
-    if (_safe_int(info_row.get("OpenTrackedCount")) or 0) > 0:
-        return "opened"
-
-    sent_value = _safe_int(info_row.get("SentCount"))
-    if sent_value and sent_value > 0:
-        return "sent"
-
-    if (_safe_int(info_row.get("QueuedCount")) or 0) > 0:
-        return "queued"
-    return None
-
-
-def _choose_mailjet_delivery_status(*candidates):
-    chosen = "unknown"
-    chosen_priority = -1
-    for candidate in candidates:
-        status = _normalize_mail_status(candidate)
-        pri = _mailjet_status_priority(status)
-        if pri > chosen_priority:
-            chosen = status
-            chosen_priority = pri
-    return chosen
-
-
-def _fetch_mailjet_message_information(limit=200):
-    cfg = load_config()
-    api_key = cfg.get("mailjet_api_key", "")
-    api_secret = cfg.get("mailjet_api_secret", "")
-    if not api_key or not api_secret:
-        return {"success": False, "error": "Mailjet not configured", "rows": []}
-
-    try:
-        resp = requests.get(
-            "https://api.mailjet.com/v3/REST/messageinformation",
-            auth=(api_key, api_secret),
-            params={
-                "Limit": max(1, min(int(limit), 500)),
-            },
-            timeout=20,
-        )
-    except Exception as exc:
-        return {"success": False, "error": str(exc), "rows": []}
-
-    if resp.status_code != 200:
-        return {"success": False, "error": f"HTTP {resp.status_code}", "rows": []}
-
-    try:
-        payload = resp.json()
-    except Exception:
-        return {"success": False, "error": "Invalid Mailjet response", "rows": []}
-
-    rows = payload.get("Data") or []
-    return {"success": True, "rows": rows}
-
-
-def _fetch_mailjet_message_row_by_id(message_id):
-    cfg = load_config()
-    api_key = cfg.get("mailjet_api_key", "")
-    api_secret = cfg.get("mailjet_api_secret", "")
-    if not api_key or not api_secret:
-        return {"success": False, "error": "Mailjet not configured", "row": None}
-    try:
-        resp = requests.get(
-            f"https://api.mailjet.com/v3/REST/message/{message_id}",
-            auth=(api_key, api_secret),
-            timeout=20,
-        )
-    except Exception as exc:
-        return {"success": False, "error": str(exc), "row": None}
-    if resp.status_code == 404:
-        return {"success": True, "row": None}
-    if resp.status_code != 200:
-        return {"success": False, "error": f"HTTP {resp.status_code}", "row": None}
-    try:
-        row = (resp.json().get("Data") or [None])[0]
-    except Exception:
-        return {"success": False, "error": "Invalid Mailjet response", "row": None}
-    return {"success": True, "row": row}
-
-
-def _fetch_mailjet_message_information_row_by_id(message_id):
-    cfg = load_config()
-    api_key = cfg.get("mailjet_api_key", "")
-    api_secret = cfg.get("mailjet_api_secret", "")
-    if not api_key or not api_secret:
-        return {"success": False, "error": "Mailjet not configured", "row": None}
-    try:
-        resp = requests.get(
-            f"https://api.mailjet.com/v3/REST/messageinformation/{message_id}",
-            auth=(api_key, api_secret),
-            timeout=20,
-        )
-    except Exception as exc:
-        return {"success": False, "error": str(exc), "row": None}
-    if resp.status_code == 404:
-        return {"success": True, "row": None}
-    if resp.status_code != 200:
-        return {"success": False, "error": f"HTTP {resp.status_code}", "row": None}
-    try:
-        row = (resp.json().get("Data") or [None])[0]
-    except Exception:
-        return {"success": False, "error": "Invalid Mailjet response", "row": None}
-    return {"success": True, "row": row}
-
-
-def _fetch_mailjet_contact_row_by_id(contact_id):
-    cfg = load_config()
-    api_key = cfg.get("mailjet_api_key", "")
-    api_secret = cfg.get("mailjet_api_secret", "")
-    if not api_key or not api_secret:
-        return {"success": False, "error": "Mailjet not configured", "row": None}
-    try:
-        resp = requests.get(
-            f"https://api.mailjet.com/v3/REST/contact/{contact_id}",
-            auth=(api_key, api_secret),
-            timeout=20,
-        )
-    except Exception as exc:
-        return {"success": False, "error": str(exc), "row": None}
-    if resp.status_code == 404:
-        return {"success": True, "row": None}
-    if resp.status_code != 200:
-        return {"success": False, "error": f"HTTP {resp.status_code}", "row": None}
-    try:
-        row = (resp.json().get("Data") or [None])[0]
-    except Exception:
-        return {"success": False, "error": "Invalid Mailjet response", "row": None}
-    return {"success": True, "row": row}
-
-
-def _fetch_mailjet_sender_row_by_id(sender_id):
-    cfg = load_config()
-    api_key = cfg.get("mailjet_api_key", "")
-    api_secret = cfg.get("mailjet_api_secret", "")
-    if not api_key or not api_secret:
-        return {"success": False, "error": "Mailjet not configured", "row": None}
-    try:
-        resp = requests.get(
-            f"https://api.mailjet.com/v3/REST/sender/{sender_id}",
-            auth=(api_key, api_secret),
-            timeout=20,
-        )
-    except Exception as exc:
-        return {"success": False, "error": str(exc), "row": None}
-    if resp.status_code == 404:
-        return {"success": True, "row": None}
-    if resp.status_code != 200:
-        return {"success": False, "error": f"HTTP {resp.status_code}", "row": None}
-    try:
-        row = (resp.json().get("Data") or [None])[0]
-    except Exception:
-        return {"success": False, "error": "Invalid Mailjet response", "row": None}
-    return {"success": True, "row": row}
-
-
-def _normalize_mailjet_message_record(message_row=None, info_row=None):
-    message_status = _normalize_mail_status((message_row or {}).get("Status") or (message_row or {}).get("State"))
-    info_status = _derive_status_from_messageinformation(info_row)
-    status = _choose_mailjet_delivery_status(message_status, info_status)
-    row_id = (message_row or {}).get("ID") or (info_row or {}).get("ID")
-    return {
-        "message_id": (message_row or {}).get("MessageID") or row_id,
-        "message_resource_id": row_id,
-        "message_uuid": (message_row or {}).get("MessageUUID") or (message_row or {}).get("UUID"),
-        "to": (
-            (message_row or {}).get("ToEmail")
-            or (message_row or {}).get("To")
-            or (message_row or {}).get("Recipient")
-            or (message_row or {}).get("ContactAlt")
-            or (info_row or {}).get("ToEmail")
-            or (info_row or {}).get("To")
-            or (info_row or {}).get("Recipient")
-            or ""
-        ),
-        "from": (
-            (message_row or {}).get("FromEmail")
-            or (message_row or {}).get("From")
-            or (info_row or {}).get("FromEmail")
-            or (info_row or {}).get("From")
-            or ""
-        ),
-        "subject": (message_row or {}).get("Subject") or (info_row or {}).get("Subject") or "",
-        "contact_id": (message_row or {}).get("ContactID") or (info_row or {}).get("ContactID"),
-        "sender_id": (message_row or {}).get("SenderID") or (info_row or {}).get("SenderID"),
-        "delivery_status": status,
-        "last_event_at": (
-            (info_row or {}).get("SendEndAt")
-            or (info_row or {}).get("CreatedAt")
-            or (message_row or {}).get("ArrivedAt")
-            or (message_row or {}).get("LastActivityAt")
-            or (message_row or {}).get("CreatedAt")
-        ),
-        "raw_state": (message_row or {}).get("State"),
-        "raw_message_status": message_status,
-        "mailjet_info_status": info_status,
-    }
-
-
-def _fetch_mailjet_message_status_for_id(message_id):
-    msg_resp = _fetch_mailjet_message_row_by_id(message_id)
-    if not msg_resp.get("success"):
-        return {"success": False, "error": msg_resp.get("error")}
-    info_resp = _fetch_mailjet_message_information_row_by_id(message_id)
-    if not info_resp.get("success"):
-        return {"success": False, "error": info_resp.get("error")}
-    message_row = msg_resp.get("row")
-    info_row = info_resp.get("row")
-    if not message_row and not info_row:
-        return {"success": True, "entry": None}
-    return {"success": True, "entry": _normalize_mailjet_message_record(message_row, info_row)}
-
-
-def _extract_mailjet_send_meta(result):
-    payload = result.get("data") or {}
-    messages = payload.get("Messages") or []
-    if not messages:
-        return {}
-    first = messages[0] or {}
-    to_list = first.get("To") or []
-    first_to = to_list[0] if to_list else {}
-    return {
-        "message_id": first_to.get("MessageID") or first.get("MessageID"),
-        "message_uuid": first_to.get("MessageUUID") or first.get("MessageUUID"),
-        "mailjet_status": _normalize_mail_status(first.get("Status")),
-        "mailjet_error": first.get("Errors"),
-    }
 
 
 def append_warmup_log_entry(entry, limit=800):
@@ -3950,30 +3427,8 @@ def summarize_warmup_entries(entries):
             summary["sent_ok"] += 1
         else:
             summary["send_failed"] += 1
-        status = _normalize_mail_status(item.get("delivery_status") or item.get("mailjet_status") or "unknown")
+        status = _normalize_mail_status(item.get("delivery_status") or "unknown")
         summary["status_breakdown"][status] = summary["status_breakdown"].get(status, 0) + 1
-        if status in NEGATIVE_MAIL_STATUSES:
-            summary["negative_events"] += 1
-    return summary
-
-
-def summarize_mailjet_entries(entries):
-    rows = list(entries or [])
-    summary = {
-        "total": len(rows),
-        "sent_ok": 0,
-        "send_failed": 0,
-        "negative_events": 0,
-        "status_breakdown": {},
-    }
-    for item in rows:
-        status = _normalize_mail_status(item.get("delivery_status") or item.get("mailjet_status") or "unknown")
-        summary["status_breakdown"][status] = summary["status_breakdown"].get(status, 0) + 1
-        ok = _delivery_status_counts_as_success(status)
-        if ok:
-            summary["sent_ok"] += 1
-        else:
-            summary["send_failed"] += 1
         if status in NEGATIVE_MAIL_STATUSES:
             summary["negative_events"] += 1
     return summary
@@ -4022,478 +3477,18 @@ def _filter_warmup_entries(entries, domain_filter=""):
     return filtered
 
 
-def _is_blank_mailjet_poll_entry(row):
-    if str(row.get("source") or "") != "mailjet_poll":
-        return False
-    return not any([
-        str(row.get("from_email") or "").strip(),
-        str(row.get("to") or "").strip(),
-        str(row.get("subject") or "").strip(),
-        str(row.get("error") or "").strip(),
-    ])
-
-
-def _prune_blank_mailjet_poll_entries(entries):
-    if not entries:
-        return []
-    pruned = []
-    removed = 0
-    for row in entries:
-        if _is_blank_mailjet_poll_entry(row):
-            removed += 1
-            continue
-        pruned.append(row)
-    return pruned
-
-
-def _mailjet_email_looks_anonymized(value):
-    email = str(value or "").strip().lower()
-    if not email:
-        return False
-    if email.startswith("*@"):
-        return True
-    if email.endswith("@domain.invalid"):
-        return True
-    return False
-
-
-def _mailjet_subject_looks_placeholder(value):
-    subject = str(value or "").strip()
-    if not subject:
-        return False
-    return re.match(r"^Mailjet Message \d+$", subject) is not None
-
-
-def _append_mailjet_import_note(existing_note, note):
-    current = str(existing_note or "").strip()
-    add = str(note or "").strip()
-    if not add:
-        return current
-    if not current:
-        return add
-    if add in current:
-        return current
-    return f"{current}; {add}"
-
-
-def _sanitize_mailjet_import_fields(from_value, to_value, subject_value):
-    clean_from = str(from_value or "").strip()
-    clean_to = str(to_value or "").strip()
-    clean_subject = str(subject_value or "").strip()
-    notes = []
-
-    if _mailjet_email_looks_anonymized(clean_from):
-        clean_from = ""
-        notes.append("Sender masked by Mailjet API")
-    if _mailjet_email_looks_anonymized(clean_to):
-        clean_to = ""
-        notes.append("Recipient masked by Mailjet API")
-    if _mailjet_subject_looks_placeholder(clean_subject):
-        clean_subject = ""
-    if not clean_subject:
-        notes.append("Subject unavailable from Mailjet history API")
-
-    deduped_notes = []
-    for note in notes:
-        if note not in deduped_notes:
-            deduped_notes.append(note)
-    return clean_from, clean_to, clean_subject, "; ".join(deduped_notes)
-
-
-def _sanitize_mailjet_poll_log_entry(row):
-    if str((row or {}).get("source") or "") != "mailjet_poll":
-        return False
-    changed = False
-    clean_from, clean_to, clean_subject, note = _sanitize_mailjet_import_fields(
-        row.get("from_email"),
-        row.get("to"),
-        row.get("subject"),
-    )
-    if str(row.get("from_email") or "") != clean_from:
-        row["from_email"] = clean_from
-        changed = True
-    if str(row.get("to") or "") != clean_to:
-        row["to"] = clean_to
-        changed = True
-    if str(row.get("subject") or "") != clean_subject:
-        row["subject"] = clean_subject
-        changed = True
-    new_note = _append_mailjet_import_note(row.get("error"), note)
-    if str(row.get("error") or "") != new_note:
-        row["error"] = new_note
-        changed = True
-    return changed
-
-
-def _warmup_log_note_meta(row):
-    source = str((row or {}).get("source") or "").strip()
-    error_text = str((row or {}).get("error") or "").strip()
-    parts = [p.strip() for p in error_text.split(";") if p and p.strip()]
-
-    badges = []
-    detail_parts = []
-
-    if source == "mailjet_poll":
-        badges.append({"label": "Mailjet Import", "tone": "info"})
-
-    known_map = {
-        "Sender masked by Mailjet API": ("Sender Hidden", "muted"),
-        "Recipient masked by Mailjet API": ("Recipient Hidden", "muted"),
-        "Subject unavailable from Mailjet history API": ("No Subject", "muted"),
-    }
-    seen_badges = set()
-    for part in parts:
-        mapped = known_map.get(part)
-        if mapped:
-            label, tone = mapped
-            key = (label, tone)
-            if key not in seen_badges:
-                badges.append({"label": label, "tone": tone})
-                seen_badges.add(key)
-            continue
-        detail_parts.append(part)
-
-    if not badges and not detail_parts and source == "mailjet_poll":
-        badges.append({"label": "Mailjet Import", "tone": "info"})
-
-    return {
-        "badges": badges,
-        "detail": "; ".join(detail_parts).strip(),
-    }
-
-
-def _decorate_warmup_log_entries_for_ui(entries):
-    decorated = []
-    for row in entries or []:
-        out = dict(row or {})
-        notes = _warmup_log_note_meta(out)
-        out["note_badges"] = notes.get("badges", [])
-        out["note_detail"] = notes.get("detail", "")
-        decorated.append(out)
-    return decorated
-
-
 def _warmup_log_response(domain_filter="", page=1, per_page=WARMUP_LOG_PAGE_SIZE):
     payload = load_email_log()
-    all_entries_raw = _sorted_warmup_entries(_prune_blank_mailjet_poll_entries(payload.get("entries", [])))
-    # History imported from Mailjet lacks reliable metadata in many tenants (masked recipients / no subject).
-    # Keep the visible log focused on Warden-originated sends while Mailjet sync contributes summary metrics.
-    all_entries = [row for row in all_entries_raw if str((row or {}).get("source") or "") != "mailjet_poll"]
+    all_entries = _sorted_warmup_entries(payload.get("entries", []))
     filtered_entries = _filter_warmup_entries(all_entries, domain_filter=domain_filter)
     paged = _paginate_warmup_entries(filtered_entries, page=page, per_page=per_page)
-    paged["entries"] = _decorate_warmup_log_entries_for_ui(paged.get("entries", []))
-    mailjet_summary = payload.get("mailjet_sync_summary") if isinstance(payload.get("mailjet_sync_summary"), dict) else None
-    if get_email_provider() != "mailjet":
-        mailjet_summary = None
-    display_summary = mailjet_summary or summarize_warmup_entries(filtered_entries)
-    summary_label = None
-    if mailjet_summary:
-        summary_label = f"Mailjet Sync Summary ({payload.get('mailjet_sync_label') or 'Custom Window'})"
-    else:
-        summary_label = "Warmup Log Summary (visible entries)"
     return {
         **paged,
-        "summary": display_summary,
+        "summary": summarize_warmup_entries(filtered_entries),
         "summary_all": summarize_warmup_entries(all_entries),
         "summary_log": summarize_warmup_entries(filtered_entries),
-        "summary_label": summary_label,
-        "mailjet_sync_summary": mailjet_summary,
-        "mailjet_sync_lookback": payload.get("mailjet_sync_lookback"),
-        "mailjet_sync_label": payload.get("mailjet_sync_label"),
-        "last_synced_at": payload.get("last_synced_at"),
+        "summary_label": "Warmup Log Summary",
         "domain_filter": str(domain_filter or "").strip().lower() or None,
-    }
-
-
-def fetch_mailjet_recent_messages(limit=200, lookback=None):
-    cfg = load_config()
-    api_key = cfg.get("mailjet_api_key", "")
-    api_secret = cfg.get("mailjet_api_secret", "")
-    if not api_key or not api_secret:
-        return {"success": False, "error": "Mailjet not configured", "entries": []}
-    lookback_key = normalize_mailjet_sync_lookback(lookback)
-    cutoff_dt = mailjet_sync_lookback_cutoff(lookback_key)
-
-    try:
-        resp = requests.get(
-            "https://api.mailjet.com/v3/REST/message",
-            auth=(api_key, api_secret),
-            params={
-                "Limit": max(1, min(int(limit), 500)),
-                "Sort": "ArrivedAt DESC",
-            },
-            timeout=20,
-        )
-    except Exception as exc:
-        return {"success": False, "error": str(exc), "entries": []}
-
-    if resp.status_code != 200:
-        return {"success": False, "error": f"HTTP {resp.status_code}", "entries": []}
-
-    try:
-        payload = resp.json()
-    except Exception:
-        return {"success": False, "error": "Invalid Mailjet response", "entries": []}
-
-    rows = payload.get("Data") or []
-    info_rows = []
-    info_error = None
-    info_resp = _fetch_mailjet_message_information(limit=limit)
-    if info_resp.get("success"):
-        info_rows = info_resp.get("rows") or []
-    else:
-        info_error = info_resp.get("error")
-    rows = [row for row in rows if _mailjet_record_in_lookback(row, cutoff_dt)]
-    info_rows = [row for row in info_rows if _mailjet_record_in_lookback(row, cutoff_dt)]
-    info_by_id = {str(row.get("ID")): row for row in info_rows if row.get("ID") is not None}
-
-    normalized = []
-    normalized_resource_ids = set()
-    normalized_index_by_resource_id = {}
-    for row in rows:
-        row_id = row.get("ID")
-        info_row = info_by_id.get(str(row_id)) if row_id is not None else None
-        record = _normalize_mailjet_message_record(row, info_row)
-        normalized.append(record)
-        if record.get("message_resource_id") is not None:
-            rid_key = str(record.get("message_resource_id"))
-            normalized_resource_ids.add(rid_key)
-            normalized_index_by_resource_id[rid_key] = len(normalized) - 1
-
-    # Mailjet sometimes returns an empty /message list while /messageinformation still
-    # has recent records. Resolve those IDs back through /message/{id} so we can recover
-    # full log rows without creating blank entries.
-    fallback_resolved = 0
-    fallback_checked = 0
-    max_fallback = min(max(10, int(limit or 200)), 30)
-
-    def _has_display_meta(rec):
-        return any([
-            str((rec or {}).get("to") or "").strip(),
-            str((rec or {}).get("from") or "").strip(),
-            str((rec or {}).get("subject") or "").strip(),
-        ])
-
-    fallback_candidates = []
-    seen_fallback_ids = set()
-
-    # First, enrich any /message list rows that came back without sender/recipient/subject.
-    for rec in normalized:
-        rid = rec.get("message_resource_id")
-        if rid is None or _has_display_meta(rec):
-            continue
-        rid_key = str(rid)
-        if rid_key in seen_fallback_ids:
-            continue
-        fallback_candidates.append((rid_key, info_by_id.get(rid_key)))
-        seen_fallback_ids.add(rid_key)
-
-    # If everything is blank (or /message returned nothing), also try recent IDs from
-    # /messageinformation so sync can repopulate after a log clear.
-    if (not normalized or not any(_has_display_meta(rec) for rec in normalized)) and info_rows:
-        for info_row in info_rows:
-            info_id = info_row.get("ID")
-            if info_id is None:
-                continue
-            rid_key = str(info_id)
-            if rid_key in seen_fallback_ids:
-                continue
-            fallback_candidates.append((rid_key, info_row))
-            seen_fallback_ids.add(rid_key)
-            if len(fallback_candidates) >= max_fallback:
-                break
-
-    for rid_key, info_row in fallback_candidates[:max_fallback]:
-        fallback_checked += 1
-        msg_resp = _fetch_mailjet_message_row_by_id(rid_key)
-        if not msg_resp.get("success"):
-            continue
-        message_row = msg_resp.get("row")
-        if not message_row:
-            continue
-        record = _normalize_mailjet_message_record(message_row, info_row)
-        if not _has_display_meta(record):
-            continue
-        if rid_key in normalized_index_by_resource_id:
-            normalized[normalized_index_by_resource_id[rid_key]] = record
-        else:
-            normalized.append(record)
-            normalized_index_by_resource_id[rid_key] = len(normalized) - 1
-            normalized_resource_ids.add(rid_key)
-        fallback_resolved += 1
-        if len(normalized) >= min(int(limit or 200), 200):
-            break
-
-    # Mailjet list/messageinformation responses often omit sender/recipient details but keep
-    # SenderID / ContactID. Resolve those so sync can show useful rows and repopulate after clear.
-    sender_cache = {}
-    contact_cache = {}
-    meta_checked = 0
-    meta_enriched = 0
-    meta_enrich_cap = min(max(20, int(limit or 200)), 30)
-    for record in normalized:
-        if _has_display_meta(record):
-            continue
-        if meta_checked >= meta_enrich_cap:
-            break
-        meta_checked += 1
-
-        sender_id = record.get("sender_id")
-        if sender_id is not None and not str(record.get("from") or "").strip():
-            sender_key = str(sender_id)
-            if sender_key not in sender_cache:
-                sender_cache[sender_key] = _fetch_mailjet_sender_row_by_id(sender_id)
-            sender_resp = sender_cache.get(sender_key) or {}
-            sender_row = sender_resp.get("row") if sender_resp.get("success") else None
-            sender_email = str((sender_row or {}).get("Email") or "").strip()
-            if sender_email:
-                record["from"] = sender_email
-                meta_enriched += 1
-
-        contact_id = record.get("contact_id")
-        if contact_id is not None and not str(record.get("to") or "").strip():
-            contact_key = str(contact_id)
-            if contact_key not in contact_cache:
-                contact_cache[contact_key] = _fetch_mailjet_contact_row_by_id(contact_id)
-            contact_resp = contact_cache.get(contact_key) or {}
-            contact_row = contact_resp.get("row") if contact_resp.get("success") else None
-            contact_email = str((contact_row or {}).get("Email") or "").strip()
-            if contact_email:
-                record["to"] = contact_email
-                meta_enriched += 1
-
-    # Do not synthesize log rows from messageinformation-only payloads because Mailjet does not
-    # provide recipient/sender/subject there, which creates unusable blank log lines.
-    normalized = [row for row in normalized if _mailjet_record_in_lookback(row, cutoff_dt)]
-    response = {
-        "success": True,
-        "entries": normalized,
-        "lookback": lookback_key,
-        "lookback_label": (MAILJET_SYNC_LOOKBACKS.get(lookback_key) or {}).get("label", lookback_key),
-    }
-    if fallback_checked:
-        response["fallback_checked"] = fallback_checked
-        response["fallback_resolved"] = fallback_resolved
-    if meta_checked:
-        response["meta_checked"] = meta_checked
-        response["meta_enriched"] = meta_enriched
-    if info_error:
-        response["warning"] = f"messageinformation unavailable: {info_error}"
-    return response
-
-
-def sync_warmup_log_from_mailjet(limit=200, lookback=None):
-    lookback_key = normalize_mailjet_sync_lookback(lookback)
-    cutoff_dt = mailjet_sync_lookback_cutoff(lookback_key)
-    fetched = fetch_mailjet_recent_messages(limit=limit, lookback=lookback_key)
-    payload = load_email_log()
-    original_entries = payload.get("entries", [])
-    # Drop legacy imported-history rows; Mailjet history API often redacts metadata, making them misleading.
-    entries = [e for e in original_entries if str((e or {}).get("source") or "") != "mailjet_poll"]
-    removed_import_rows = max(0, len(original_entries) - len(entries))
-    by_msg_id = {str(e.get("message_id")): e for e in entries if e.get("message_id") is not None}
-    by_msg_uuid = {str(e.get("message_uuid")): e for e in entries if e.get("message_uuid")}
-    by_resource_id = {str(e.get("message_resource_id")): e for e in entries if e.get("message_resource_id") is not None}
-
-    updated = 0
-    added = 0
-    skipped_imported = 0
-    if fetched.get("success"):
-        for item in fetched.get("entries", []):
-            clean_from, clean_to, clean_subject, import_note = _sanitize_mailjet_import_fields(
-                item.get("from"),
-                item.get("to"),
-                item.get("subject"),
-            )
-            item_from = clean_from
-            item_to = clean_to
-            item_subject = clean_subject
-            msg_id = item.get("message_id")
-            msg_uuid = item.get("message_uuid")
-            resource_id = item.get("message_resource_id")
-            msg_id_key = str(msg_id) if msg_id is not None else None
-            msg_uuid_key = str(msg_uuid) if msg_uuid else None
-            resource_id_key = str(resource_id) if resource_id is not None else None
-
-            target = None
-            if msg_uuid_key and msg_uuid_key in by_msg_uuid:
-                target = by_msg_uuid[msg_uuid_key]
-            elif msg_id_key and msg_id_key in by_msg_id:
-                target = by_msg_id[msg_id_key]
-            elif resource_id_key and resource_id_key in by_resource_id:
-                target = by_resource_id[resource_id_key]
-
-            if target is not None:
-                target["delivery_status"] = item.get("delivery_status") or target.get("delivery_status")
-                target["last_event_at"] = item.get("last_event_at") or target.get("last_event_at")
-                target["from_email"] = target.get("from_email") or item_from
-                target["to"] = target.get("to") or item_to
-                target["subject"] = target.get("subject") or item_subject
-                if item.get("delivery_status"):
-                    target["mailjet_status"] = item.get("delivery_status")
-                    target["success"] = _delivery_status_counts_as_success(item.get("delivery_status"))
-                if msg_id is not None and not target.get("message_id"):
-                    target["message_id"] = msg_id
-                    by_msg_id[str(msg_id)] = target
-                if msg_uuid and not target.get("message_uuid"):
-                    target["message_uuid"] = msg_uuid
-                    by_msg_uuid[str(msg_uuid)] = target
-                if resource_id is not None and not target.get("message_resource_id"):
-                    target["message_resource_id"] = resource_id
-                    by_resource_id[str(resource_id)] = target
-                updated += 1
-            else:
-                skipped_imported += 1
-
-    # Targeted refresh for pending sends. Mailjet's list endpoints can lag or return
-    # stale "queued" status, but the per-message endpoints usually resolve final state.
-    pending_statuses = {"accepted", "queued", "success"}
-    pending_entries = [
-        e for e in entries
-        if e.get("message_id") is not None
-        and _normalize_mail_status(e.get("delivery_status") or e.get("mailjet_status")) in pending_statuses
-        and _mailjet_record_in_lookback(e, cutoff_dt)
-    ]
-    pending_entries.sort(key=lambda row: str(row.get("sent_at") or row.get("last_event_at") or ""), reverse=True)
-    per_message_limit = min(max(5, int(limit or 200) // 4), 40)
-    for target in pending_entries[:per_message_limit]:
-        refresh = _fetch_mailjet_message_status_for_id(target.get("message_id"))
-        if not refresh.get("success"):
-            continue
-        item = refresh.get("entry")
-        if not item:
-            continue
-        new_status = item.get("delivery_status") or target.get("delivery_status")
-        old_status = _normalize_mail_status(target.get("delivery_status") or target.get("mailjet_status"))
-        target["delivery_status"] = new_status
-        target["mailjet_status"] = item.get("raw_message_status") or target.get("mailjet_status") or new_status
-        target["last_event_at"] = item.get("last_event_at") or target.get("last_event_at")
-        target["message_resource_id"] = item.get("message_resource_id") or target.get("message_resource_id")
-        target["message_uuid"] = target.get("message_uuid") or item.get("message_uuid")
-        target["success"] = _delivery_status_counts_as_success(new_status)
-        if _normalize_mail_status(new_status) != old_status:
-            updated += 1
-
-    entries.sort(key=lambda row: str(row.get("sent_at") or row.get("last_event_at") or ""), reverse=True)
-    if len(entries) > 800:
-        entries = entries[:800]
-    payload["entries"] = entries
-    payload["last_synced_at"] = datetime.now().isoformat()
-    payload["mailjet_sync_lookback"] = lookback_key
-    payload["mailjet_sync_label"] = (MAILJET_SYNC_LOOKBACKS.get(lookback_key) or {}).get("label", lookback_key)
-    payload["mailjet_sync_summary"] = summarize_mailjet_entries(fetched.get("entries", [])) if fetched.get("success") else None
-    save_email_log(payload)
-    return {
-        "success": fetched.get("success", False),
-        "error": fetched.get("error"),
-        "updated": updated,
-        "added": added,
-        "removed_imported": removed_import_rows,
-        "skipped_imported": skipped_imported,
-        "lookback": lookback_key,
-        "lookback_label": (MAILJET_SYNC_LOOKBACKS.get(lookback_key) or {}).get("label", lookback_key),
-        "last_synced_at": payload["last_synced_at"],
-        "summary": payload.get("mailjet_sync_summary") or summarize_warmup_entries(entries),
     }
 
 
@@ -4766,8 +3761,6 @@ def recover_domains_from_github(username=None):
 @app.route("/")
 def dashboard():
     domains_data = load_domains()
-    if refresh_whois_cache(domains_data, max_refresh=12):
-        save_domains(domains_data)
     domains = domains_data.get("domains", [])
     scan_state = load_scan_state()
     categories = get_available_categories()
@@ -4793,6 +3786,13 @@ def dashboard():
             d["category"] = d.get("category_talos")
             d["category_source"] = "talos"
         d["age_days"], d["age_source"] = resolve_domain_age_days(d)
+        d["aging_progress"] = min(100, int((d["age_days"] / 90) * 100)) if d["age_days"] else 0
+        d["aging_milestone"] = (
+            "ready" if d["age_days"] >= 90 else
+            "maturing" if d["age_days"] >= 30 else
+            "fresh" if d["age_days"] >= 14 else
+            "new"
+        )
         vt = {
             "malicious": d.get("vt_malicious", 0),
             "suspicious": d.get("vt_suspicious", 0),
@@ -4807,6 +3807,9 @@ def dashboard():
             marker = f"Auto-burned: {d['burned_reason']}"
             if marker not in note:
                 d["notes"] = f"{note} | {marker}".strip(" |")
+            status_changed = True
+    for d in domains:
+        if auto_transition_domain_status(d):
             status_changed = True
     if status_changed:
         save_domains(domains_data)
@@ -4877,6 +3880,15 @@ def api_dns_check(domain_name):
 @app.route("/api/email-check/<domain_name>")
 def api_email_check(domain_name):
     return jsonify(check_email_records(domain_name))
+
+
+@app.route("/api/whois/refresh", methods=["POST"])
+def api_whois_refresh():
+    domains_data = load_domains()
+    changed = refresh_whois_cache(domains_data, max_refresh=20)
+    if changed:
+        save_domains(domains_data)
+    return jsonify({"success": True, "refreshed": changed})
 
 
 @app.route("/api/categorization-check/<domain_name>")
@@ -5086,7 +4098,6 @@ def email_dashboard():
     cfg = load_config()
     email_provider = get_email_provider(cfg)
     email_provider_label = get_email_provider_label(email_provider)
-    mailjet_configured = mailjet_provider_configured(cfg)
     mail_provider_configured = current_mail_provider_configured(cfg)
     domain_filter = str(request.args.get("domain") or "").strip().lower()
     log_view = _warmup_log_response(domain_filter=domain_filter, page=1, per_page=WARMUP_LOG_PAGE_SIZE)
@@ -5097,15 +4108,10 @@ def email_dashboard():
         email_provider=email_provider,
         email_provider_label=email_provider_label,
         mail_provider_configured=mail_provider_configured,
-        mailjet_configured=mailjet_configured,
-        mailjet_sync_enabled=(email_provider == "mailjet" and mailjet_configured),
-        mailjet_sync_lookback_default=log_view.get("mailjet_sync_lookback") or DEFAULT_MAILJET_SYNC_LOOKBACK,
-        mailjet_sync_lookback_options=[{"key": k, **v} for k, v in MAILJET_SYNC_LOOKBACKS.items()],
         warmup_log=log_view.get("entries", []),
         warmup_summary=log_view.get("summary", {}),
         warmup_summary_label=log_view.get("summary_label"),
         warmup_summary_all=log_view.get("summary_all", {}),
-        warmup_last_synced=log_view.get("last_synced_at"),
         warmup_page=log_view.get("page", 1),
         warmup_per_page=log_view.get("per_page", WARMUP_LOG_PAGE_SIZE),
         warmup_total_entries=log_view.get("total_entries", 0),
@@ -5160,25 +4166,6 @@ def api_warmup_log():
     per_page = WARMUP_LOG_PAGE_SIZE if per_page > WARMUP_LOG_PAGE_SIZE else max(1, per_page)
 
     return jsonify(_warmup_log_response(domain_filter=domain_filter, page=page, per_page=per_page))
-
-
-@app.route("/api/warmup/log/sync", methods=["POST"])
-def api_warmup_log_sync():
-    if get_email_provider() != "mailjet":
-        return jsonify({"success": False, "error": "Mailjet event sync is only available when Mailjet is the selected email provider."}), 400
-    payload = request.get_json(silent=True) or {}
-    lookback = normalize_mailjet_sync_lookback(payload.get("lookback"))
-    limit_raw = payload.get("limit")
-    if limit_raw is None:
-        limit = (MAILJET_SYNC_LOOKBACKS.get(lookback) or {}).get("limit_hint", 200)
-    else:
-        try:
-            limit = int(limit_raw)
-        except (TypeError, ValueError):
-            limit = 200
-    sync_result = sync_warmup_log_from_mailjet(limit=limit, lookback=lookback)
-    status = 200 if sync_result.get("success") else 502
-    return jsonify(sync_result), status
 
 
 @app.route("/api/warmup/log/clear", methods=["POST"])
@@ -5259,8 +4246,8 @@ def settings():
         cfg["github_username"] = request.form.get("github_username", "").strip()
         cfg["github_pat"] = request.form.get("github_pat", "").strip()
         cfg["github_auto_push"] = bool(request.form.get("github_auto_push"))
-        cfg["mailjet_api_key"] = request.form.get("mailjet_api_key", "").strip()
-        cfg["mailjet_api_secret"] = request.form.get("mailjet_api_secret", "").strip()
+        cfg["cloudflare_email_api_token"] = request.form.get("cloudflare_email_api_token", "").strip()
+        cfg["cloudflare_account_id"] = request.form.get("cloudflare_account_id", "").strip()
         cfg["smtp2go_api_key"] = request.form.get("smtp2go_api_key", "").strip()
         cfg["virustotal_api_key"] = request.form.get("virustotal_api_key", "").strip()
         cfg["abuseipdb_api_key"] = request.form.get("abuseipdb_api_key", "").strip()
@@ -5286,6 +4273,37 @@ def settings():
 # ── Connection test endpoints ──────────────────────────────────
 
 
+@app.route("/api/github/connect", methods=["POST"])
+def api_github_connect():
+    pat = (request.json or {}).get("pat", "").strip()
+    if not pat:
+        return jsonify({"success": False, "error": "No token provided"})
+    try:
+        resp = requests.get(
+            "https://api.github.com/user",
+            headers={"Authorization": f"token {pat}", "Accept": "application/vnd.github+json"},
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            return jsonify({"success": False, "error": f"GitHub returned HTTP {resp.status_code}"})
+        user_data = resp.json()
+        login = user_data.get("login", "")
+        scopes = resp.headers.get("X-OAuth-Scopes", "")
+        has_repo = "repo" in [s.strip() for s in scopes.split(",")]
+        cfg = load_config()
+        cfg["github_pat"] = pat
+        cfg["github_username"] = login
+        save_config(cfg)
+        return jsonify({
+            "success": True,
+            "user": login,
+            "scopes": scopes,
+            "has_repo_scope": has_repo,
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
+
 @app.route("/api/test/github")
 def api_test_github():
     cfg = load_config()
@@ -5302,21 +4320,29 @@ def api_test_github():
         return jsonify({"success": False, "error": str(e)})
 
 
-@app.route("/api/test/mailjet")
-def api_test_mailjet():
+@app.route("/api/test/cloudflare")
+def api_test_cloudflare():
     cfg = load_config()
-    if not cfg.get("mailjet_api_key") or not cfg.get("mailjet_api_secret"):
+    api_token = str(cfg.get("cloudflare_email_api_token") or "").strip()
+    account_id = str(cfg.get("cloudflare_account_id") or "").strip()
+    if not api_token or not account_id:
         return jsonify({"success": False, "error": "Not configured"})
     try:
         resp = requests.get(
-            "https://api.mailjet.com/v3/REST/apikey",
-            auth=(cfg["mailjet_api_key"], cfg["mailjet_api_secret"]),
+            f"https://api.cloudflare.com/client/v4/accounts/{account_id}",
+            headers={"Authorization": f"Bearer {api_token}"},
             timeout=10,
         )
-        if resp.status_code == 200:
+        try:
+            data = resp.json()
+        except Exception:
+            data = {}
+        if resp.status_code == 200 and data.get("success"):
             return jsonify({"success": True})
         else:
-            return jsonify({"success": False, "error": f"HTTP {resp.status_code}"})
+            errors = data.get("errors") or []
+            err_msg = "; ".join(str(e.get("message", "")) for e in errors if isinstance(e, dict)) if errors else f"HTTP {resp.status_code}"
+            return jsonify({"success": False, "error": err_msg})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 

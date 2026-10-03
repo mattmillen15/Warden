@@ -14,18 +14,35 @@
     <div class="card-body">
         <p class="card-desc">Connect a GitHub account to auto-create repos and push generated sites. Leave blank to generate files locally only.</p>
 
-        <div class="form-group">
-            <label for="github_username">GitHub Username</label>
-            <input type="text" id="github_username" name="github_username" value="{{ config.get('github_username', '') }}" placeholder="your-github-username">
+        <div id="gh-connected" style="display:none; margin-bottom:16px;">
+            <div style="display:flex; align-items:center; gap:10px; padding:10px 14px; background:var(--bg-alt, #1a2332); border-radius:6px; border:1px solid var(--border, #2a3a4a);">
+                <span style="color:var(--success, #4caf50); font-size:18px;">&#10003;</span>
+                <span>Connected as <strong id="gh-connected-user"></strong></span>
+                <button type="button" class="btn btn-xs" style="margin-left:auto;" onclick="disconnectGitHub()">Disconnect</button>
+            </div>
+            <div id="gh-scope-warning" style="display:none; margin-top:8px; padding:8px 12px; background:var(--warning-bg, #332d1a); border-radius:4px; font-size:13px; color:var(--warning, #ff9800);">
+                Token is missing the <code>repo</code> scope. Sites won't push automatically.
+            </div>
         </div>
 
-        <div class="form-group">
-            <label for="github_pat">Personal Access Token (PAT)</label>
-            <input type="password" id="github_pat" name="github_pat" value="{{ config.get('github_pat', '') }}" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx">
-            <small>Needs <code>repo</code> scope. Create one at <a href="https://github.com/settings/tokens" target="_blank">GitHub Settings → Tokens</a></small>
+        <div id="gh-connect-flow">
+            <div style="display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap;">
+                <button type="button" class="btn" onclick="openGitHubTokenPage()" style="white-space:nowrap;">Create Token on GitHub</button>
+                <small style="flex:1; min-width:180px; padding-top:6px;">Opens GitHub in a new tab with the right scope pre-selected. Copy the token and paste it below.</small>
+            </div>
+            <div class="form-group" style="margin-top:12px;">
+                <label for="github_pat_input">Paste your token</label>
+                <div style="display:flex; gap:8px;">
+                    <input type="password" id="github_pat_input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" style="flex:1;">
+                    <button type="button" class="btn btn-primary" id="gh-connect-btn" onclick="connectGitHub()">Connect</button>
+                </div>
+            </div>
         </div>
 
-        <div class="form-group">
+        <input type="hidden" id="github_username" name="github_username" value="{{ config.get('github_username', '') }}">
+        <input type="hidden" id="github_pat" name="github_pat" value="{{ config.get('github_pat', '') }}">
+
+        <div class="form-group" style="margin-top:12px;">
             <label class="checkbox-label">
                 <input type="checkbox" name="github_auto_push" value="1" {% if config.get('github_auto_push') %}checked{% endif %}>
                 Auto-push on generate (create repo + push + enable Pages)
@@ -50,17 +67,17 @@
             </select>
         </div>
 
-        <div id="email-provider-mailjet-fields" class="provider-cred-group">
+        <div id="email-provider-cloudflare-fields" class="provider-cred-group">
             <div class="form-group">
-                <label for="mailjet_api_key">Mailjet API Key</label>
-                <input type="text" id="mailjet_api_key" name="mailjet_api_key" value="{{ config.get('mailjet_api_key', '') }}" placeholder="Mailjet API key">
+                <label for="cloudflare_email_api_token">Cloudflare API Token</label>
+                <input type="password" id="cloudflare_email_api_token" name="cloudflare_email_api_token" value="{{ config.get('cloudflare_email_api_token', '') }}" placeholder="Cloudflare API token with email-sending permission">
             </div>
 
             <div class="form-group">
-                <label for="mailjet_api_secret">Mailjet API Secret</label>
-                <input type="password" id="mailjet_api_secret" name="mailjet_api_secret" value="{{ config.get('mailjet_api_secret', '') }}" placeholder="Mailjet API secret">
+                <label for="cloudflare_account_id">Cloudflare Account ID</label>
+                <input type="text" id="cloudflare_account_id" name="cloudflare_account_id" value="{{ config.get('cloudflare_account_id', '') }}" placeholder="Cloudflare account ID">
             </div>
-            <small>Get Mailjet credentials from <a href="https://app.mailjet.com/account/apikeys" target="_blank">Mailjet Dashboard</a>.</small>
+            <small>Get your API token from the <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank">Cloudflare Dashboard</a>. The token needs email-sending permission. Your Account ID is on the main dashboard overview page.</small>
         </div>
 
         <div id="email-provider-smtp2go-fields" class="provider-cred-group" style="display:none;">
@@ -138,8 +155,8 @@
             <button type="button" class="btn btn-xs" id="test-gh" onclick="testGitHub()">Test</button>
         </div>
         <div class="test-row">
-            <span>Mailjet API</span>
-            <button type="button" class="btn btn-xs" id="test-mailjet" onclick="testMailjet()">Test</button>
+            <span>Cloudflare Email API</span>
+            <button type="button" class="btn btn-xs" id="test-cloudflare" onclick="testCloudflare()">Test</button>
         </div>
         <div class="test-row">
             <span>SMTP2GO API</span>
@@ -189,12 +206,12 @@ function testGitHub() {
         });
 }
 
-function testMailjet() {
-    var btn = document.getElementById('test-mailjet');
+function testCloudflare() {
+    var btn = document.getElementById('test-cloudflare');
     btn.textContent = 'Testing...';
     btn.disabled = true;
     btn.className = 'btn btn-xs';
-    fetch('/api/test/mailjet')
+    fetch('/api/test/cloudflare')
         .then(r => r.json())
         .then(data => {
             if (data.success) {
@@ -303,17 +320,77 @@ function testCategorizationEngine() {
         });
 }
 
+function openGitHubTokenPage() {
+    window.open('https://github.com/settings/tokens/new?scopes=repo,delete_repo&description=Warden+Domain+Manager', '_blank');
+}
+
+function connectGitHub() {
+    var pat = document.getElementById('github_pat_input').value.trim();
+    if (!pat) return;
+    var btn = document.getElementById('gh-connect-btn');
+    btn.textContent = 'Connecting...';
+    btn.disabled = true;
+    fetch('/api/github/connect', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({pat: pat})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        btn.disabled = false;
+        if (data.success) {
+            btn.textContent = 'Connect';
+            document.getElementById('github_username').value = data.user;
+            document.getElementById('github_pat').value = pat;
+            showGitHubConnected(data.user, data.has_repo_scope);
+        } else {
+            btn.textContent = 'Failed';
+            btn.classList.add('btn-danger');
+            setTimeout(function() {
+                btn.textContent = 'Connect';
+                btn.className = 'btn btn-primary';
+            }, 2500);
+            alert(data.error || 'Connection failed');
+        }
+    })
+    .catch(function() {
+        btn.disabled = false;
+        btn.textContent = 'Error';
+        setTimeout(function() { btn.textContent = 'Connect'; btn.className = 'btn btn-primary'; }, 2500);
+    });
+}
+
+function showGitHubConnected(user, hasRepo) {
+    document.getElementById('gh-connect-flow').style.display = 'none';
+    document.getElementById('gh-connected').style.display = '';
+    document.getElementById('gh-connected-user').textContent = user;
+    document.getElementById('gh-scope-warning').style.display = hasRepo === false ? '' : 'none';
+}
+
+function disconnectGitHub() {
+    document.getElementById('github_username').value = '';
+    document.getElementById('github_pat').value = '';
+    document.getElementById('gh-connected').style.display = 'none';
+    document.getElementById('gh-connect-flow').style.display = '';
+    document.getElementById('github_pat_input').value = '';
+}
+
 function updateEmailProviderFields() {
     var sel = document.getElementById('email_provider');
-    var provider = sel ? String(sel.value || 'mailjet').toLowerCase() : 'mailjet';
-    var mailjet = document.getElementById('email-provider-mailjet-fields');
+    var provider = sel ? String(sel.value || 'cloudflare').toLowerCase() : 'cloudflare';
+    var cloudflare = document.getElementById('email-provider-cloudflare-fields');
     var smtp2go = document.getElementById('email-provider-smtp2go-fields');
-    if (mailjet) mailjet.style.display = (provider === 'mailjet') ? '' : 'none';
+    if (cloudflare) cloudflare.style.display = (provider === 'cloudflare') ? '' : 'none';
     if (smtp2go) smtp2go.style.display = (provider === 'smtp2go') ? '' : 'none';
 }
 
 document.addEventListener('DOMContentLoaded', function() {
     updateEmailProviderFields();
+    var ghUser = document.getElementById('github_username').value;
+    var ghPat = document.getElementById('github_pat').value;
+    if (ghUser && ghPat) {
+        showGitHubConnected(ghUser, true);
+    }
 });
 
 </script>

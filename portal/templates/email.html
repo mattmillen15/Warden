@@ -160,28 +160,11 @@
                 {% endfor %}
             </select>
             <button class="btn btn-sm" id="warmup-clear-log-btn" onclick="clearWarmupLog()">Clear Log</button>
-            <small id="warmup-sync-time" class="text-muted">
-                {% if mailjet_sync_enabled %}
-                    {% if warmup_last_synced %}Last Mailjet sync: {{ warmup_last_synced[:16] }}{% else %}Not synced yet{% endif %}
-                {% else %}
-                    Mailjet sync disabled ({{ email_provider_label }} selected)
-                {% endif %}
-            </small>
-            {% if mailjet_sync_enabled %}
-            <select id="warmup-sync-lookback" class="inline-select" title="Mailjet history window to import">
-                {% for opt in mailjet_sync_lookback_options %}
-                <option value="{{ opt.key }}" {% if (mailjet_sync_lookback_default or '1d') == opt.key %}selected{% endif %}>{{ opt.label }}</option>
-                {% endfor %}
-            </select>
-            <button class="btn btn-sm" id="warmup-sync-btn" onclick="syncWarmupLog()">Sync Mailjet Events</button>
-            {% else %}
-            <small class="text-muted">Mailjet event sync is available only when Mailjet is selected.</small>
-            {% endif %}
         </div>
     </div>
     <div class="card-body">
         <small id="warmup-summary-scope" class="text-muted" style="display:block; margin-bottom: 8px;">
-            {{ warmup_summary_label or 'Warmup Log Summary (visible entries)' }}
+            {{ warmup_summary_label or 'Warmup Log Summary' }}
         </small>
         <div id="warmup-log-summary" class="detail-grid" style="grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); margin-bottom: 14px;">
             <div class="info-row"><span class="info-label">Total</span><span class="info-value">{{ warmup_summary.total or 0 }}</span></div>
@@ -189,9 +172,6 @@
             <div class="info-row"><span class="info-label">Send Failed</span><span class="info-value status-down">{{ warmup_summary.send_failed or 0 }}</span></div>
             <div class="info-row"><span class="info-label">Negative Events</span><span class="info-value status-down">{{ warmup_summary.negative_events or 0 }}</span></div>
         </div>
-        <small class="text-muted" style="display:block; margin-bottom: 10px;">
-            Log rows show sends with locally stored metadata. Mailjet sync updates delivery status and summary metrics for the selected time window when Mailjet is the active provider.
-        </small>
         <div id="warmup-log-wrap">
             {% if warmup_log %}
             <table class="data-table" id="warmup-log-table">
@@ -202,7 +182,7 @@
                         <th>To</th>
                         <th>Subject</th>
                         <th>Status</th>
-                        <th>Notes</th>
+                        <th>Error</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -213,7 +193,7 @@
                         <td>{{ row.to or '—' }}</td>
                         <td>{{ row.subject or '—' }}</td>
                         <td>
-                            {% set s = (row.delivery_status or row.provider_status or row.mailjet_status or 'unknown') %}
+                            {% set s = (row.delivery_status or row.provider_status or 'unknown') %}
                             {% set s_display = 'success' if s == 'accepted' else s %}
                             {% if s in ['bounce','bounced','blocked','spam','unsub','deferred','hard_bounce','soft_bounce','failed'] %}
                             <span class="status-down">{{ s_display }}</span>
@@ -224,16 +204,9 @@
                             {% endif %}
                         </td>
                         <td>
-                            {% if row.note_badges %}
-                            <div class="warmup-note-badges">
-                                {% for badge in row.note_badges %}
-                                <span class="warmup-note-badge warmup-note-{{ badge.tone or 'muted' }}">{{ badge.label }}</span>
-                                {% endfor %}
-                            </div>
-                            {% endif %}
-                            {% if row.note_detail %}
-                            <div class="check-warning">{{ row.note_detail }}</div>
-                            {% elif not row.note_badges %}
+                            {% if row.error %}
+                            <div class="check-warning">{{ row.error }}</div>
+                            {% else %}
                             —
                             {% endif %}
                         </td>
@@ -263,19 +236,15 @@
 
         <div class="guide-section">
             <h3>1. SPF Record</h3>
-            <p>Add a TXT record to authorize Mailjet to send on your behalf.</p>
+            <p>Add a TXT record to authorize your email provider to send on your behalf.</p>
             <div class="code-block">
-                <code>v=spf1 include:spf.mailjet.com ~all</code>
+                <code>v=spf1 include:_spf.mx.cloudflare.net ~all</code>
             </div>
         </div>
 
         <div class="guide-section">
             <h3>2. DKIM</h3>
-            <p>Mailjet provides a DKIM key pair. Add the public key as a TXT record:</p>
-            <div class="code-block">
-                <code>mailjet._domainkey.yourdomain.com TXT "v=DKIM1; k=rsa; p=YOUR_PUBLIC_KEY"</code>
-            </div>
-            <p><small>Get your DKIM key from the Mailjet dashboard under Authentication &rarr; SPF/DKIM.</small></p>
+            <p>Cloudflare handles DKIM signing automatically for domains on your account. Verify that your domain's DNS is managed through Cloudflare.</p>
         </div>
 
         <div class="guide-section">
@@ -327,7 +296,6 @@ var warmupLogState = {
     totalEntries: {{ warmup_total_entries or 0 }},
     domainFilter: {{ warmup_domain_filter|tojson }}
 };
-var mailjetSyncEnabled = {{ mailjet_sync_enabled|tojson }};
 
 function runEmailCheck() {
     var domain = document.getElementById('email-check-domain').value;
@@ -363,7 +331,7 @@ function runEmailCheck() {
                 html += '<div class="record-value">' + data.spf.record + '</div>';
                 if (data.spf.issues) data.spf.issues.forEach(function(i) { html += '<div class="check-warning">' + i + '</div>'; });
             } else {
-                html += '<div class="check-fix">Add TXT record: <code>v=spf1 include:spf.mailjet.com ~all</code></div>';
+                html += '<div class="check-fix">Add TXT record: <code>v=spf1 include:_spf.mx.cloudflare.net ~all</code></div>';
             }
             html += '</div>';
 
@@ -375,7 +343,7 @@ function runEmailCheck() {
             if (data.dkim.status === 'found') {
                 html += '<div class="record-value">Selector: ' + data.dkim.selector + '</div>';
             } else {
-                html += '<div class="check-info">Configure DKIM in your Mailjet dashboard and add the TXT record.</div>';
+                html += '<div class="check-info">Verify that your domain DNS is managed through Cloudflare for automatic DKIM signing.</div>';
             }
             html += '</div>';
 
@@ -430,7 +398,7 @@ function sendWarmup() {
         if (data.results) {
             data.results.forEach(function(r) {
                 html += '<div class="warmup-result-item">';
-                var immediateStatus = String(r.delivery_status || r.provider_status || r.mailjet_status || (r.success ? 'accepted' : 'failed')).toLowerCase();
+                var immediateStatus = String(r.delivery_status || r.provider_status || (r.success ? 'accepted' : 'failed')).toLowerCase();
                 if (r.success) {
                     html += '<span class="status-up">Success</span> ';
                 } else {
@@ -479,41 +447,23 @@ function renderWarmupLog(entries) {
         return;
     }
     var html = '<table class="data-table" id="warmup-log-table"><thead><tr>'
-        + '<th>Time</th><th>From</th><th>To</th><th>Subject</th><th>Status</th><th>Notes</th>'
+        + '<th>Time</th><th>From</th><th>To</th><th>Subject</th><th>Status</th><th>Error</th>'
         + '</tr></thead><tbody>';
     entries.forEach(function(row) {
-        var status = String(row.delivery_status || row.provider_status || row.mailjet_status || 'unknown').toLowerCase();
+        var status = String(row.delivery_status || row.provider_status || 'unknown').toLowerCase();
         var statusLabel = (status === 'accepted') ? 'success' : status;
         var cls = 'status-warn';
         if (['bounce','bounced','blocked','spam','unsub','deferred','hard_bounce','soft_bounce','hardbounced','softbounced','failed'].indexOf(status) >= 0) cls = 'status-down';
         else if (['accepted','sent','success','opened','clicked','delivered'].indexOf(status) >= 0) cls = 'status-up';
         var ts = (row.last_event_at || row.sent_at || '').slice(0, 19);
-        var notesHtml = '—';
-        var badges = Array.isArray(row.note_badges) ? row.note_badges : [];
-        var detail = String(row.note_detail || '');
-        if (!detail && (!badges || !badges.length) && row.error) {
-            detail = String(row.error || '');
-        }
-        if ((badges && badges.length) || detail) {
-            notesHtml = '';
-            if (badges && badges.length) {
-                notesHtml += '<div class="warmup-note-badges">';
-                badges.forEach(function(badge) {
-                    if (!badge || !badge.label) return;
-                    var tone = String(badge.tone || 'muted');
-                    notesHtml += '<span class="warmup-note-badge warmup-note-' + tone + '">' + String(badge.label) + '</span>';
-                });
-                notesHtml += '</div>';
-            }
-            if (detail) notesHtml += '<div class="check-warning">' + detail + '</div>';
-        }
+        var errorHtml = row.error ? '<div class="check-warning">' + String(row.error) + '</div>' : '—';
         html += '<tr>'
             + '<td><small class="text-muted">' + (ts || '—') + '</small></td>'
             + '<td>' + (row.from_email || '—') + '</td>'
             + '<td>' + (row.to || '—') + '</td>'
             + '<td>' + (row.subject || '—') + '</td>'
             + '<td><span class="' + cls + '">' + statusLabel + '</span></td>'
-            + '<td>' + notesHtml + '</td>'
+            + '<td>' + errorHtml + '</td>'
             + '</tr>';
     });
     html += '</tbody></table>';
@@ -579,16 +529,6 @@ function refreshWarmupLog(page) {
             renderWarmupLog(data.entries || []);
             renderWarmupPagination(data || {});
             warmupLogState.domainFilter = String((data && data.domain_filter) || domainFilter || '').toLowerCase();
-            var syncEl = document.getElementById('warmup-sync-time');
-            if (syncEl) {
-                if (mailjetSyncEnabled) {
-                    syncEl.textContent = data.last_synced_at
-                        ? 'Last Mailjet sync: ' + String(data.last_synced_at).slice(0, 16)
-                        : 'Not synced yet';
-                } else {
-                    syncEl.textContent = 'Mailjet sync disabled ({{ email_provider_label }})';
-                }
-            }
         })
         .catch(() => {});
 }
@@ -620,36 +560,6 @@ function clearWarmupLog() {
         })
         .catch(() => alert('Failed to clear warmup log'))
         .finally(() => { if (btn) btn.disabled = false; });
-}
-
-function syncWarmupLog() {
-    var btn = document.getElementById('warmup-sync-btn');
-    if (!btn) return;
-    var lookbackSel = document.getElementById('warmup-sync-lookback');
-    var lookback = lookbackSel ? String(lookbackSel.value || '').trim() : '';
-    btn.disabled = true;
-    var original = btn.textContent;
-    btn.textContent = 'Syncing...';
-    fetch('/api/warmup/log/sync', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({lookback: lookback})
-    })
-        .then(r => r.json().then(data => ({ok:r.ok, data:data})))
-        .then(res => {
-            if (!res.ok || !res.data.success) {
-                alert((res.data && res.data.error) || 'Mailjet sync failed');
-                return;
-            }
-            refreshWarmupLog(warmupLogState.page || 1);
-        })
-        .catch(() => {
-            alert('Mailjet sync failed');
-        })
-        .finally(() => {
-            btn.disabled = false;
-            btn.textContent = original;
-        });
 }
 
 function collectWarmupSchedulePayload() {

@@ -576,7 +576,7 @@ textarea {
     border-left: 2px solid var(--yellow);
 }
 
-.mailjet-import-badge {
+.provider-import-badge {
     display: inline-block;
     margin: 0 0 6px 0;
     padding: 3px 8px;
