@@ -606,7 +606,7 @@ BROWSER_FALLBACK_PROVIDERS = {
     "talosintelligence",
 }
 LIGHTSPEED_PROXY_URL = "https://production-archive-proxy-api.lightspeedsystems.com/archiveproxy"
-LIGHTSPEED_PROXY_API_KEY = "onEkoztnFpTi3VG7XQEq6skQWN3aFm3h"
+LIGHTSPEED_PROXY_API_KEY = os.environ.get("WARDEN_LIGHTSPEED_API_KEY", "")
 LIGHTSPEED_CATEGORY_CACHE = {"updated_at": 0.0, "map": {}}
 HTTP_BROWSER_HEADERS = {
     "User-Agent": (
